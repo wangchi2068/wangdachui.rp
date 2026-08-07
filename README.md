@@ -18,6 +18,7 @@
 | **世界线存档** | 六状态文件全量快照（含主线进度/角色卡），回档即整体替换；每 N 回合自动存档防丢档 |
 | **斜杠命令** | `/state` 看账本 · `/snap` 存档 · `/back` 回档 · `/new` 新会话 · `/lore` 查世界书 · `/phase` 主线进度 |
 | **多模型分级** | 记账/压缩可用便宜模型（`WANGDACHUI_SCRIBE_MODEL` / `WANGDACHUI_COMPRESS_MODEL`），主剧情用主模型 |
+| **多 provider 兜底** | 主 API 不可达 / 5xx / 401·403·404 时，自动切到 `WANGDACHUI_FALLBACK_*` 配置的兜底网关（OpenAI 兼容），无需重启；主 provider 故障时服务不中断 |
 | **Web 界面** | 聊天流式输出、决策卡、账本/人物册/主线进度/上下文统计面板、角色卡上传（手写 WebSocket + Node http，零依赖） |
 | **工程化** | 27+ 单元测试（mock LLM）、tsc 严格模式、GitHub Actions CI、Docker 一键部署 |
 

@@ -44,10 +44,6 @@ function campaignDir(): string | null {
 }
 
 const client = new LlmClient(cfg);
-const registry = new ToolRegistry({ stateDir: cfg.stateDir });
-registerBuiltinTools(registry, { stateDir: cfg.stateDir });
-registerDecisionTool(registry);
-const harness = new Harness(client, registry, cfg);
 
 /** 战役主线：campaign/arc.json 的 phases 数组（无战役/无 arc.json 时返回 undefined → 用默认三幕） */
 function loadCampaignArc(): Phase[] | undefined {
@@ -71,6 +67,8 @@ interface SessionState {
   ctx: ContextManager;
   ledger: LedgerService;
   director: Director;
+  registry: ToolRegistry;
+  harness: Harness;
   lastContext: string;
 }
 
@@ -90,8 +88,13 @@ function getSession(sid?: string | null): SessionState {
     ctx: new ContextManager(client, cfg, stateDir),
     ledger: new LedgerService(client, stateDir, cfg.scribeModel),
     director: new Director(stateDir, loadCampaignArc()),
+    registry: new ToolRegistry({ stateDir }),
+    harness: new Harness(client, new ToolRegistry({ stateDir }), cfg),
     lastContext: "",
   };
+  registerBuiltinTools(st.registry, { stateDir });
+  registerDecisionTool(st.registry);
+  st.harness = new Harness(client, st.registry, cfg);
   st.card = loadDefaultCard(stateDir);
   sessions.set(key, st);
   return st;
@@ -646,7 +649,7 @@ async function handleChat(conn: Connection, st: SessionState, text: string): Pro
     st.lastContext = text;
     const system = buildSystem(st);
     const visible = st.ctx.visibleMessages(system, text);
-    const result = await harness.runTurn(visible, {
+    const result = await st.harness.runTurn(visible, {
       onNarrativeDelta: (d) => conn.send({ type: "delta", text: d }),
       onDecisionRequested: (cardData: DecisionCard) =>
         new Promise<string>((resolve) => {
