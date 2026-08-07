@@ -215,7 +215,10 @@ export class LlmClient {
         readResult = await Promise.race([
           reader.read(),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("stream idle timeout")), IDLE_TIMEOUT_MS),
+            setTimeout(() => {
+              console.warn("[llm] 流式空闲超时：服务端 45s 未推流");
+              reject(new Error("stream idle timeout"));
+            }, IDLE_TIMEOUT_MS),
           ),
         ]);
       } catch (e) {
