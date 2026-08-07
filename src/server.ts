@@ -254,7 +254,17 @@ server.on("upgrade", (req: IncomingMessage, socket: Socket) => {
       } catch {
         return;
       }
-      if (msg.type === "chat" && typeof msg.text === "string") void handleChat(conn, msg.text);
+      if (msg.type === "chat" && typeof msg.text === "string") {
+        // 决策卡挂起时，普通输入视为自由选择（防止"没人点卡片 → 对话卡死"）
+        if (pendingDecision) {
+          const p = pendingDecision;
+          pendingDecision = null;
+          p.resolve(msg.text);
+          conn.send({ type: "warn", message: "已把你的输入作为决策卡的自由选择：" + msg.text });
+        } else {
+          void handleChat(conn, msg.text);
+        }
+      }
       if (msg.type === "choice" && typeof msg.text === "string" && pendingDecision) {
         const p = pendingDecision;
         pendingDecision = null;
@@ -286,7 +296,9 @@ async function handleChat(conn: Connection, text: string): Promise<void> {
           conn.send({ type: "card", card: cardData });
         }),
     });
-    if (result.stoppedBy === "max-turns") conn.send({ type: "warn", message: "达到循环上限，本轮未产出正文" });
+    if (result.stoppedBy === "max-turns") conn.send({ type: "warn", message: "本轮达到工具循环上限，正文可能不完整，可重发或输入『继续』" });
+    else if (!result.content.trim()) conn.send({ type: "warn", message: "模型本轮未产出正文（可能只输出了思考链），换个说法重发试试" });
+    else if (result.lastFinishReason === "length") conn.send({ type: "warn", message: "回复达到长度上限被截断，输入『继续』可接着写" });
     conn.send({
       type: "turn_done",
       stats: { modelCalls: result.modelCalls, stoppedBy: result.stoppedBy, tools: result.tools, decisions: result.decisions },

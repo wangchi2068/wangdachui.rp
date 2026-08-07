@@ -96,6 +96,7 @@ const els = { messages: $("messages"), input: $("input"), send: $("send"), cardF
 const LEDGER_LABEL = { characters: "人物", items: "物品", relations: "关系", plots: "伏笔", notes: "备注" };
 let busy = false;
 let cardEl = null; // 正在等待选择的决策卡 DOM
+let streamingBubble = null; // 当前正在流式填充的正文气泡
 
 function addMsg(role, text) {
   const div = document.createElement("div");
@@ -150,9 +151,23 @@ function renderCard(card) {
   }
   els.messages.appendChild(box);
   cardEl = box;
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const hint = document.createElement("div");
+  hint.className = "warn";
+  hint.id = "cardHint";
+  hint.textContent = "✦ 剧情在等你拍板：在卡片上选择，或直接在输入框输入你的走向";
+  els.messages.appendChild(hint);
   scrollDown();
 }
-function sendChoice(text) { wsSend({ type: "choice", text }); }
+function sendChoice(text) {
+  wsSend({ type: "choice", text });
+  clearCard();
+}
+function clearCard() {
+  if (cardEl) { cardEl.remove(); cardEl = null; }
+  const h = $("cardHint");
+  if (h) h.remove();
+}
 
 function renderLedger(ledger) {
   const box = $("ledger");
@@ -194,21 +209,31 @@ function renderState(st) {
 let ws = null;
 function wsSend(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
 
+let interrupted = false;
 function connect() {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onopen = () => { $("chipState").textContent = "已连接"; };
+  ws.onopen = () => {
+    $("chipState").textContent = "已连接";
+    if (interrupted) {
+      interrupted = false;
+      const w = document.createElement("div");
+      w.className = "warn";
+      w.textContent = "⚠ 连接已重连：若上一条回复被中断，请重发或输入『继续』";
+      els.messages.appendChild(w);
+      scrollDown();
+    }
+  };
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === "init") renderState(msg.state);
     if (msg.type === "delta") {
-      let body = els.messages.querySelector(".msg.assistant:last-of-type .body");
-      if (!body) { body = addMsg("assistant", ""); body.className = "body"; }
-      body.textContent += msg.text;
+      if (!streamingBubble) streamingBubble = addMsg("assistant", "");
+      streamingBubble.textContent += msg.text;
       scrollDown();
     }
     if (msg.type === "turn_done") {
-      busy = false; els.send.disabled = false; els.input.disabled = false;
+      busy = false; streamingBubble = null; els.send.disabled = false; els.input.disabled = false;
       addTools(msg.stats.tools);
       if (msg.stats.decisions && msg.stats.decisions.length) {
         $("stTools").textContent = "决策卡 ×" + msg.stats.decisions.length;
@@ -220,17 +245,29 @@ function connect() {
     if (msg.type === "state") renderState(msg.state);
     if (msg.type === "warn") { const w = document.createElement("div"); w.className = "warn"; w.textContent = msg.message; els.messages.appendChild(w); scrollDown(); }
     if (msg.type === "error") {
-      busy = false; els.send.disabled = false; els.input.disabled = false;
+      busy = false; streamingBubble = null; els.send.disabled = false; els.input.disabled = false;
       const w = document.createElement("div"); w.className = "warn"; w.textContent = "⚠ " + msg.message; els.messages.appendChild(w); scrollDown();
     }
   };
-  ws.onclose = () => { setTimeout(connect, 1500); };
+  ws.onclose = () => {
+    if (busy) interrupted = true;
+    busy = false; els.send.disabled = false; els.input.disabled = false;
+    setTimeout(connect, 1500);
+  };
 }
 
 async function sendChat() {
   const text = els.input.value.trim();
-  if (!text || busy) return;
-  busy = true; els.send.disabled = true; els.input.disabled = true;
+  if (!text) return;
+  // 决策卡挂起时：普通输入当作自由选择（防止"没人点卡片 → 对话卡死"）
+  if (cardEl) {
+    wsSend({ type: "choice", text });
+    clearCard();
+    els.input.value = "";
+    return;
+  }
+  if (busy) return;
+  busy = true; els.send.disabled = true;
   els.input.value = "";
   addMsg("user", text);
   wsSend({ type: "chat", text });

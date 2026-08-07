@@ -37,7 +37,7 @@ function makeScriptedClient(script: Array<{ content?: string; toolCalls?: ToolCa
     async chat(): Promise<ChatResult> {
       return { content: "", reasoning: "", toolCalls: [], finishReason: "stop" };
     },
-  } as LlmClient;
+  } as unknown as LlmClient;
 }
 
 function registryWith(dir: string): ToolRegistry {

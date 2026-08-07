@@ -29,6 +29,8 @@ export interface TurnResult {
   added: ChatMessage[];
   /** 实际调用模型的次数 */
   modelCalls: number;
+  /** 最后一次模型调用的 finish_reason（用于识别截断） */
+  lastFinishReason: string;
   stoppedBy: "done" | "max-turns";
 }
 
@@ -72,19 +74,27 @@ export class Harness {
     const tools: ToolExecution[] = [];
     const decisions: DecisionRecord[] = [];
     let modelCalls = 0;
+    let lastFinishReason = "";
+    // 本轮正文增量先缓冲：只有确定是最终剧情时才流式外发；
+    // 若因循环上限终止，也把最后一次调用的内容外发，避免用户什么都看不到。
+    let lastBuffer: string[] = [];
+    let lastContent = "";
     const toolDefs = opts.tools ?? this.registry.defs();
     const temperature = opts.temperature ?? 0.8;
 
     for (let i = 0; i < this.cfg.maxLoopTurns; i++) {
       modelCalls++;
-      // 本轮的正文增量先缓冲：只有确定是最终剧情时才流式外发
       const callBuffer: string[] = [];
+      lastBuffer = callBuffer;
       const result = await this.client.stream(messages, {
         tools: toolDefs,
         temperature,
+        maxTokens: 4096,
         onDelta: (d) => callBuffer.push(d),
       });
       reasoning += result.reasoning;
+      lastFinishReason = result.finishReason;
+      lastContent = result.content;
 
       const assistantMsg: ChatMessage = { role: "assistant", content: result.content || null };
       if (result.toolCalls.length) assistantMsg.tool_calls = result.toolCalls;
@@ -100,6 +110,7 @@ export class Harness {
           decisions,
           added: messages.slice(history.length),
           modelCalls,
+          lastFinishReason,
           stoppedBy: "done",
         };
       }
@@ -131,14 +142,16 @@ export class Harness {
       }
     }
 
-    // 达到上限：放弃本轮正文，保留工具轨迹供诊断
+    // 达到上限：把最后一次调用已缓冲的正文外发（部分正文总比空白好），供诊断
+    for (const d of lastBuffer) opts.onNarrativeDelta?.(d);
     return {
-      content: "",
+      content: lastContent,
       reasoning,
       tools,
       decisions,
       added: messages.slice(history.length),
       modelCalls,
+      lastFinishReason,
       stoppedBy: "max-turns",
     };
   }
