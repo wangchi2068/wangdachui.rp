@@ -1,0 +1,18 @@
+{
+  "name": "盛唐江湖·风物志",
+  "description": "独立世界书示例：地域与势力设定",
+  "entries": [
+    {
+      "keys": ["长安"],
+      "content": "长安：大唐都城，万国来朝。东西两市热闹非凡，江湖事多藏于市井之中。剑客入城，需按规矩卸剑。",
+      "constant": false,
+      "insertion_order": 0
+    },
+    {
+      "keys": ["雾岭", "魔教"],
+      "content": "雾岭：魔教总坛所在，终年浓雾不散，外人难以进入。教中有秘术可借雾隐身形。",
+      "constant": false,
+      "insertion_order": 1
+    }
+  ]
+}
