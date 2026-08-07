@@ -69,7 +69,7 @@
   <aside>
     <div class="sec">
       <h3>角色卡</h3>
-      <input type="file" id="cardFile" accept=".json" hidden>
+      <input type="file" id="cardFile" accept=".json,.png" hidden>
       <button id="uploadBtn">⬆ 上传角色卡（SillyTavern JSON）</button>
     </div>
     <div class="sec">
@@ -85,6 +85,14 @@
     <div class="sec">
       <h3>世界状态账本</h3>
       <div id="ledger"><span style="color:var(--dim);font-size:13px">（账本为空）</span></div>
+    </div>
+    <div class="sec">
+      <h3>世界线存档</h3>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <input id="snapLabel" placeholder="存档名（可选）" style="flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;">
+        <button id="snapBtn" style="background:var(--accent);border:none;color:#0b0d12;border-radius:6px;padding:0 12px;cursor:pointer;font-size:12px;">存</button>
+      </div>
+      <ul id="snapList" style="max-height:180px;overflow-y:auto;"></ul>
     </div>
   </aside>
 </div>
@@ -205,6 +213,50 @@ function renderState(st) {
   renderLedger(st.ledger);
 }
 
+/** 初始渲染历史消息（刷新/回档后恢复对话） */
+function renderHistory(turns) {
+  for (const t of turns || []) {
+    if (t.user) addMsg("user", t.user);
+    for (const m of t.messages || []) {
+      if (m.role === "assistant" && m.content) addMsg("assistant", m.content);
+    }
+  }
+}
+
+async function loadSnapshots() {
+  const list = await (await fetch("/api/snapshots")).json();
+  const ul = $("snapList");
+  ul.innerHTML = "";
+  if (!list.length) { ul.innerHTML = '<li style="color:var(--dim)">（暂无存档）</li>'; return; }
+  for (const s of list) {
+    const li = document.createElement("li");
+    li.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:6px;";
+    const info = document.createElement("span");
+    info.textContent = (s.label ? s.label + " · " : "") + new Date(s.at).toLocaleString();
+    info.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    const btn = document.createElement("button");
+    btn.textContent = "回档";
+    btn.style.cssText = "background:var(--accent);border:none;color:#0b0d12;border-radius:6px;padding:2px 10px;cursor:pointer;font-size:12px;";
+    btn.onclick = async () => {
+      if (!confirm("回档到「" + (s.label || new Date(s.at).toLocaleString()) + "」？当前进度会先自动存档。")) return;
+      const res = await fetch("/api/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: s.id }) });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "回档失败"); return; }
+      location.reload();
+    };
+    li.appendChild(info); li.appendChild(btn);
+    ul.appendChild(li);
+  }
+}
+async function saveSnapshot() {
+  const label = $("snapLabel").value.trim();
+  const res = await fetch("/api/snapshot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }) });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || "存档失败"); return; }
+  $("snapLabel").value = "";
+  loadSnapshots();
+}
+
 /* ─────────── WebSocket ─────────── */
 let ws = null;
 function wsSend(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
@@ -226,7 +278,7 @@ function connect() {
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.type === "init") renderState(msg.state);
+    if (msg.type === "init") { renderState(msg.state); renderHistory(msg.state.turns || []); loadSnapshots(); }
     if (msg.type === "delta") {
       if (!streamingBubble) streamingBubble = addMsg("assistant", "");
       streamingBubble.textContent += msg.text;
@@ -277,10 +329,18 @@ els.send.onclick = sendChat;
 els.input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } });
 
 els.uploadBtn.onclick = () => els.cardFile.click();
+$("snapBtn").onclick = saveSnapshot;
 els.cardFile.onchange = async () => {
   const f = els.cardFile.files[0];
   if (!f) return;
-  const body = await f.text();
+  let body;
+  if (/\.png$/i.test(f.name)) {
+    const buf = await f.arrayBuffer();
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    body = JSON.stringify({ pngBase64: b64 });
+  } else {
+    body = await f.text();
+  }
   const res = await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body });
   const data = await res.json();
   if (!res.ok) { alert(data.error || "导入失败"); return; }

@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖（仅 devDependencies）
+        run: npm ci
+
+      - name: 类型检查（tsc 严格模式）
+        run: npx tsc --noEmit
+
+      - name: 单元测试（mock LLM，不费 token）
+        run: npm test

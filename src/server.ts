@@ -17,7 +17,9 @@ import { registerDecisionTool, type DecisionCard } from "./harness/decision-card
 import { Harness } from "./harness/harness.ts";
 import { LedgerService, snapshotText } from "./harness/memory-ledger.ts";
 import { ContextManager } from "./harness/context.ts";
+import { createSnapshot, deleteSnapshot, listSnapshots, restoreSnapshot } from "./harness/worldline.ts";
 import { parseCard, type CharacterCard } from "./roleplay/character-card.ts";
+import { parsePngCard } from "./roleplay/png-card.ts";
 import { activateLore } from "./roleplay/lorebook.ts";
 import { buildSystemPrompt } from "./roleplay/assemble.ts";
 
@@ -39,6 +41,14 @@ const ledgerService = new LedgerService(client, cfg.stateDir);
 let card: CharacterCard | null = loadDefaultCard();
 let ctx = new ContextManager(client, cfg);
 let lastContext = "";
+
+/** 把当前生效角色卡持久化，保证世界线快照总能捕获到卡 */
+function persistCurrentCard(): void {
+  if (!card) return;
+  mkdirSync(cfg.stateDir, { recursive: true });
+  writeFileSync(resolve(cfg.stateDir, "card.json"), JSON.stringify(card), "utf8");
+}
+persistCurrentCard();
 
 function loadDefaultCard(): CharacterCard | null {
   const saved = resolve(root, "state/card.json");
@@ -105,7 +115,14 @@ const server = createServer(async (req, res) => {
       for await (const chunk of req) body += chunk;
       let parsed: CharacterCard | null = null;
       try {
-        parsed = parseCard(JSON.parse(body));
+        const bodyObj = JSON.parse(body) as { json?: unknown; pngBase64?: string };
+        if (typeof bodyObj.pngBase64 === "string") {
+          parsed = parsePngCard(Buffer.from(bodyObj.pngBase64, "base64"));
+        } else if (bodyObj.json !== undefined) {
+          parsed = parseCard(bodyObj.json);
+        } else {
+          parsed = parseCard(bodyObj); // 直接贴角色卡 JSON
+        }
       } catch {
         parsed = null;
       }
@@ -128,6 +145,64 @@ const server = createServer(async (req, res) => {
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, name: card.name, firstMes: card.firstMes ?? "" }));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/snapshots") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(listSnapshots(cfg.stateDir)));
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/snapshot") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      const label = (() => {
+        try {
+          const b = JSON.parse(body) as { label?: string };
+          return typeof b.label === "string" ? b.label : undefined;
+        } catch {
+          return undefined;
+        }
+      })();
+      const snap = createSnapshot(cfg.stateDir, label);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, id: snap.id, at: snap.at }));
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/restore") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      let id = "";
+      try {
+        id = String((JSON.parse(body) as { id?: unknown }).id ?? "");
+      } catch {
+        id = "";
+      }
+      if (!id) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "缺少快照 id" }));
+        return;
+      }
+      // 回档前自动留档，防手滑
+      createSnapshot(cfg.stateDir, "回档前自动存档");
+      const result = restoreSnapshot(cfg.stateDir, id);
+      if (!result.ok) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: result.error }));
+        return;
+      }
+      // 重建内存态：上下文管理器（回合/摘要）与角色卡都从磁盘重新加载
+      ctx = new ContextManager(client, cfg);
+      card = loadDefaultCard();
+      persistCurrentCard();
+      lastContext = "";
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, at: result.at, label: result.label }));
+      return;
+    }
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/snapshot/")) {
+      deleteSnapshot(cfg.stateDir, decodeURIComponent(url.pathname.slice("/api/snapshot/".length)));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
     res.writeHead(404, { "Content-Type": "text/plain" });
