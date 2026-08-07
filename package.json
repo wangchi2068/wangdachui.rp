@@ -1,0 +1,15 @@
+{
+  "name": "rp-harness",
+  "version": "0.1.0",
+  "description": "LLM 角色扮演 Agent Harness：上下文工程、结构化记忆账本、工具调用循环、决策卡交互",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "smoke": "node scripts/smoke.ts",
+    "web": "node src/server.ts",
+    "test": "node --test test/*.test.ts"
+  }
+}
