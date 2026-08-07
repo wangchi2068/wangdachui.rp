@@ -206,9 +206,25 @@ export class LlmClient {
     let reasoning = "";
     const toolCalls: ToolCall[] = [];
     let finishReason = "";
-
+    // 流式空闲超时：SSE 连接已建立但服务端停止推流（LLM 挂起/过载）时，
+    // reader.read() 会永久挂起，必须超时 abort 而不是让前端永久"生成中"。
+    const IDLE_TIMEOUT_MS = 45_000;
     while (true) {
-      const { done, value } = await reader.read();
+      let readResult: Awaited<ReturnType<typeof reader.read>>;
+      try {
+        readResult = await Promise.race([
+          reader.read(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("stream idle timeout")), IDLE_TIMEOUT_MS),
+          ),
+        ]);
+      } catch (e) {
+        // 空闲超时（服务端停止推流）：清理流后，有内容按已有内容返回，无内容抛错
+        reader.cancel().catch(() => {});
+        if (content || reasoning || toolCalls.length) break;
+        throw e;
+      }
+      const { done, value } = readResult;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       // SSE 事件以空行分隔；残留在 buffer 等下一块
