@@ -44,6 +44,8 @@ export interface ChatOptions {
   tools?: ToolDef[];
   temperature?: number;
   maxTokens?: number;
+  /** 模型覆盖（多模型分级：记账/压缩用便宜模型） */
+  model?: string;
 }
 
 /**
@@ -58,7 +60,7 @@ export class LlmClient {
 
   private async request(messages: ChatMessage[], opts: ChatOptions & { stream?: boolean }): Promise<Response> {
     const body: Record<string, unknown> = {
-      model: this.cfg.model,
+      model: opts.model ?? this.cfg.model,
       messages,
       stream: opts.stream ?? false,
     };
@@ -66,16 +68,27 @@ export class LlmClient {
     if (opts.temperature !== undefined) body.temperature = opts.temperature;
     if (opts.maxTokens !== undefined) body.max_tokens = opts.maxTokens;
 
-    const res = await fetch(`${this.cfg.apiBase}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.cfg.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new ApiError(res.status, await res.text());
-    return res;
+    // 网络/5xx/429 重试（最多 2 次，指数退避）；4xx 业务错误不重试
+    const MAX_RETRY = 2;
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt <= MAX_RETRY; attempt++) {
+      try {
+        const res = await fetch(`${this.cfg.apiBase}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.cfg.apiKey}`,
+          },
+          body: JSON.stringify(body),
+        });
+        if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 429)) return res;
+        lastErr = new ApiError(res.status, await res.text());
+      } catch (e) {
+        lastErr = e; // 网络层错误
+      }
+      if (attempt < MAX_RETRY) await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
 
   /** 非流式单轮调用——旁侧模型（记账、压缩、摘要）用 */

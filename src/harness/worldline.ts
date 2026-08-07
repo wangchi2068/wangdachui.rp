@@ -23,6 +23,7 @@ const STATE_FILES = [
   "archive.jsonl",
   "decisions.jsonl",
   "card.json",
+  "director.json",
 ] as const;
 
 function snapshotsDir(stateDir: string): string {

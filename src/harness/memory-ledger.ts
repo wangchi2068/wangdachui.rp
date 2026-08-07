@@ -171,10 +171,12 @@ export interface LedgerUpdate {
 export class LedgerService {
   private client: LlmClient;
   private stateDir: string;
+  private model?: string;
 
-  constructor(client: LlmClient, stateDir: string) {
+  constructor(client: LlmClient, stateDir: string, model?: string) {
     this.client = client;
     this.stateDir = stateDir;
+    this.model = model;
   }
 
   load(): Ledger {
@@ -190,7 +192,7 @@ export class LedgerService {
           { role: "system", content: SCRIBE_SYSTEM },
           { role: "user", content: buildScribePrompt({ ...opts, current }) },
         ],
-        { temperature: 0.2, maxTokens: 2000 },
+        { temperature: 0.2, maxTokens: 2000, model: this.model },
       );
       const delta = extractJson(res.content) as Record<string, unknown> | null;
       if (!delta) return { ok: false, error: `记账输出非 JSON：${res.content.slice(0, 200)}` };

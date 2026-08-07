@@ -1,0 +1,13 @@
+services:
+  rp-harness:
+    build: .
+    container_name: rp-harness
+    ports:
+      - "7620:7620"
+    env_file:
+      - .env
+    environment:
+      LIYUAN_PORT: "7620"
+    volumes:
+      - ./state:/app/state # 账本/存档/历史持久化（升级重建不丢档）
+    restart: unless-stopped

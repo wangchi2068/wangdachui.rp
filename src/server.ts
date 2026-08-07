@@ -7,7 +7,7 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { createHash } from "node:crypto";
 import type { Socket } from "node:net";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
 import { LlmClient, type ChatMessage } from "./llm/client.ts";
@@ -16,11 +16,12 @@ import { registerBuiltinTools } from "./tools/builtin.ts";
 import { registerDecisionTool, type DecisionCard } from "./harness/decision-card.ts";
 import { Harness } from "./harness/harness.ts";
 import { LedgerService, snapshotText } from "./harness/memory-ledger.ts";
-import { ContextManager } from "./harness/context.ts";
+import { ContextManager, estimateChars } from "./harness/context.ts";
 import { createSnapshot, deleteSnapshot, listSnapshots, restoreSnapshot } from "./harness/worldline.ts";
+import { Director } from "./director/director.ts";
 import { parseCard, type CharacterCard } from "./roleplay/character-card.ts";
 import { parsePngCard } from "./roleplay/png-card.ts";
-import { activateLore } from "./roleplay/lorebook.ts";
+import { activateLore, parseLorebook, type LorebookEntry } from "./roleplay/lorebook.ts";
 import { buildSystemPrompt } from "./roleplay/assemble.ts";
 
 const PORT = Number(process.env.LIYUAN_PORT ?? 7620);
@@ -36,10 +37,11 @@ const registry = new ToolRegistry({ stateDir: cfg.stateDir });
 registerBuiltinTools(registry, { stateDir: cfg.stateDir });
 registerDecisionTool(registry);
 const harness = new Harness(client, registry, cfg);
-const ledgerService = new LedgerService(client, cfg.stateDir);
+const ledgerService = new LedgerService(client, cfg.stateDir, cfg.scribeModel);
 
 let card: CharacterCard | null = loadDefaultCard();
 let ctx = new ContextManager(client, cfg);
+let director = new Director(cfg.stateDir);
 let lastContext = "";
 
 /** 把当前生效角色卡持久化，保证世界线快照总能捕获到卡 */
@@ -73,12 +75,35 @@ function loadDefaultCard(): CharacterCard | null {
 
 function buildSystem(): string {
   if (!card) return "（尚未导入角色卡）";
-  return buildSystemPrompt({
-    card,
-    lore: activateLore(card.characterBook ?? [], lastContext),
-    ledgerSnapshot: snapshotText(ledgerService.load()),
-    extraRules: "用第一人称扮演角色，保持人设；遇到重大剧情转折时用 decide 工具把候选方向做成卡片询问用户，不要滥用。",
-  });
+  const blocks = [
+    buildSystemPrompt({
+      card,
+      lore: activateLore(allLoreEntries(), lastContext),
+      ledgerSnapshot: snapshotText(ledgerService.load()),
+      extraRules: "用第一人称扮演角色，保持人设；遇到重大剧情转折时用 decide 工具把候选方向做成卡片询问用户，不要滥用。",
+    }),
+  ];
+  const directive = director.buildDirective();
+  if (directive) blocks.push(directive);
+  return blocks.join("\n\n");
+}
+
+/** 汇总可用的世界书条目：卡内嵌 book + assets/lorebooks/*.json */
+function allLoreEntries(): LorebookEntry[] {
+  const fromCard = card?.characterBook ?? [];
+  const fromFiles: LorebookEntry[] = [];
+  const dir = resolve(root, "assets/lorebooks");
+  if (existsSync(dir)) {
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".json")) continue;
+      try {
+        fromFiles.push(...parseLorebook(JSON.parse(readFileSync(resolve(dir, f), "utf8"))));
+      } catch {
+        /* 跳过损坏的世界书文件 */
+      }
+    }
+  }
+  return [...fromCard, ...fromFiles];
 }
 
 function collectState() {
@@ -92,6 +117,7 @@ function collectState() {
     windowTurns: ctx.windowSize,
     totalTurns: ctx.totalTurns,
     turns: ctx.allTurns.slice(-6).map((t) => ({ user: t.userInput, messages: t.messages })),
+    mainline: director.summary(),
   };
 }
 
@@ -135,6 +161,7 @@ const server = createServer(async (req, res) => {
       mkdirSync(cfg.stateDir, { recursive: true });
       writeFileSync(resolve(cfg.stateDir, "card.json"), JSON.stringify(parsed), "utf8");
       ctx = new ContextManager(client, cfg); // 换卡 = 新会话
+      director.reset();
       lastContext = "";
       if (card.firstMes) {
         await ctx.endTurn({
@@ -192,6 +219,7 @@ const server = createServer(async (req, res) => {
       }
       // 重建内存态：上下文管理器（回合/摘要）与角色卡都从磁盘重新加载
       ctx = new ContextManager(client, cfg);
+      director = new Director(cfg.stateDir); // 主线进度随快照回档
       card = loadDefaultCard();
       persistCurrentCard();
       lastContext = "";
@@ -340,6 +368,7 @@ server.on("upgrade", (req: IncomingMessage, socket: Socket) => {
           void handleChat(conn, msg.text);
         }
       }
+      if (msg.type === "command" && typeof msg.text === "string") void handleCommand(conn, msg.text);
       if (msg.type === "choice" && typeof msg.text === "string" && pendingDecision) {
         const p = pendingDecision;
         pendingDecision = null;
@@ -353,6 +382,93 @@ server.on("upgrade", (req: IncomingMessage, socket: Socket) => {
     pendingDecision = null;
   });
 });
+
+/** 斜杠命令：/help /state /snap /back /new /lore /phase */
+async function handleCommand(conn: Connection, text: string): Promise<void> {
+  const [rawCmd, ...rest] = text.trim().split(/\s+/);
+  const cmd = (rawCmd ?? "").toLowerCase();
+  const arg = rest.join(" ").trim();
+  const notice = (m: string) => conn.send({ type: "notice", text: m });
+  try {
+    switch (cmd) {
+      case "/help":
+        notice("可用命令：/state 看账本 · /snap [名字] 存档 · /back [N] 列档/回档 · /new 开新会话 · /lore 词 查世界书 · /phase 主线进度 · /help");
+        break;
+      case "/state":
+        notice(snapshotText(ledgerService.load()));
+        break;
+      case "/snap": {
+        const s = createSnapshot(cfg.stateDir, arg || undefined);
+        notice(`已存档 ${s.at.slice(0, 19)}${s.label ? `（${s.label}）` : ""}`);
+        break;
+      }
+      case "/back": {
+        const snaps = listSnapshots(cfg.stateDir);
+        if (!snaps.length) {
+          notice("暂无存档");
+          break;
+        }
+        if (!arg) {
+          notice(
+            `共 ${snaps.length} 个存档：\n` +
+              snaps.map((s, i) => `${i + 1}. ${s.label ? s.label + " · " : ""}${s.at.slice(0, 19)}`).join("\n") +
+              `\n用 /back N 回档（1 = 最新）`,
+          );
+          break;
+        }
+        const n = Number(arg);
+        const snap = Number.isInteger(n) && n >= 1 && n <= snaps.length ? snaps[n - 1] : undefined;
+        if (!snap) {
+          notice(`编号无效，共 ${snaps.length} 个存档`);
+          break;
+        }
+        createSnapshot(cfg.stateDir, "回档前自动存档");
+        const r = restoreSnapshot(cfg.stateDir, snap.id);
+        if (!r.ok) {
+          notice(`回档失败：${r.error}`);
+          break;
+        }
+        ctx = new ContextManager(client, cfg);
+        director = new Director(cfg.stateDir);
+        card = loadDefaultCard();
+        persistCurrentCard();
+        lastContext = "";
+        notice(`已回档到 ${snap.at.slice(0, 19)}${snap.label ? `（${snap.label}）` : ""}`);
+        conn.send({ type: "reload" });
+        break;
+      }
+      case "/new": {
+        ctx = new ContextManager(client, cfg);
+        director.reset();
+        lastContext = "";
+        notice("已开新会话（角色卡保留），历史与账本已清空");
+        conn.send({ type: "reload" });
+        break;
+      }
+      case "/lore": {
+        const all = allLoreEntries();
+        const hits = all.filter(
+          (e) => e.enabled && (!arg || e.content.includes(arg) || e.keys.some((k) => k.includes(arg.toLowerCase()))),
+        );
+        if (!hits.length) {
+          notice(`世界书未命中「${arg}」`);
+          break;
+        }
+        notice("世界书命中：\n" + hits.slice(0, 6).map((e) => `- ${e.content.slice(0, 100)}`).join("\n"));
+        break;
+      }
+      case "/phase": {
+        const m = director.summary();
+        notice(`【${m.title}】\n目标：${m.objectives.join("；")}\n已解锁：${m.unlocked.join(" → ")}`);
+        break;
+      }
+      default:
+        notice(`未知命令 ${cmd}，输入 /help 查看`);
+    }
+  } catch (e) {
+    notice(`命令失败：${(e as Error).message}`);
+  }
+}
 
 async function handleChat(conn: Connection, text: string): Promise<void> {
   if (!card) {
@@ -376,11 +492,25 @@ async function handleChat(conn: Connection, text: string): Promise<void> {
     else if (result.lastFinishReason === "length") conn.send({ type: "warn", message: "回复达到长度上限被截断，输入『继续』可接着写" });
     conn.send({
       type: "turn_done",
-      stats: { modelCalls: result.modelCalls, stoppedBy: result.stoppedBy, tools: result.tools, decisions: result.decisions },
+      stats: {
+        modelCalls: result.modelCalls,
+        stoppedBy: result.stoppedBy,
+        tools: result.tools,
+        decisions: result.decisions,
+        estTokens: Math.round(estimateChars(visible) / 3), // 字符估算，仅供展示
+      },
     });
     const prune = await ctx.endTurn({ systemText: system, userInput: text, added: result.added });
     const up = await ledgerService.updateAfterTurn({ characterName: card.name, userInput: text, narrative: result.content });
+    // 主线推进：把最近剧情（输入+正文+账本）交给导演比对关键词
     lastContext = `${text}\n${result.content}`;
+    const adv = director.advance(`${lastContext}\n${snapshotText(ledgerService.load())}`, ctx.totalTurns);
+    if (adv.advanced) conn.send({ type: "warn", message: `✦ 主线推进：${adv.to?.title}` });
+    // 自动存档：每 N 回合存一次，防丢档
+    if (cfg.autoSnapshotEvery > 0 && ctx.totalTurns > 0 && ctx.totalTurns % cfg.autoSnapshotEvery === 0) {
+      const snap = createSnapshot(cfg.stateDir, `自动存档·第${ctx.totalTurns}回合`);
+      conn.send({ type: "warn", message: `💾 已自动存档（第 ${ctx.totalTurns} 回合）` });
+    }
     conn.send({ type: "state", state: collectState(), prune, ledgerUpdate: up });
   } catch (e) {
     conn.send({ type: "error", message: (e as Error).message });

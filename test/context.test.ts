@@ -33,6 +33,7 @@ function makeConfig(dir: string, budget: number, maxTurns = 5): Config {
     contextBudgetChars: budget,
     maxLoopTurns: maxTurns,
     stateDir: dir,
+    autoSnapshotEvery: 0,
   };
 }
 

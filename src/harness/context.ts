@@ -199,7 +199,7 @@ export class ContextManager {
           content: `【已有前情提要】\n${this.summary || "（无）"}\n\n【新剧情·用户】\n${turn.userInput}\n【新剧情·正文】\n${narrative}\n\n请输出合并后的完整前情提要。`,
         },
       ],
-      { temperature: 0.3, maxTokens: 900 },
+      { temperature: 0.3, maxTokens: 900, model: this.cfg.compressModel },
     );
     const merged = res.content.trim();
     // 健壮性：输出为空或异常过短（相比旧摘要），保留旧摘要并降级（真相仍在归档里）

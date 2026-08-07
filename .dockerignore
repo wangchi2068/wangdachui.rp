@@ -1,0 +1,14 @@
+# 密钥与本地配置——绝不提交
+.env
+*.local.json
+
+# 运行期数据
+state/
+node_modules/
+
+# 构建与系统
+server.log
+server.pid
+*.png
+.DS_Store
+Thumbs.db

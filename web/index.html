@@ -77,6 +77,15 @@
       <div class="stat-row"><span>预算</span><b id="stBudget">—</b></div>
       <div class="stat-row"><span>窗口 / 总回合</span><b id="stWindow">—</b></div>
       <div class="stat-row"><span>本回合工具</span><b id="stTools">—</b></div>
+      <div class="stat-row"><span>本回合估算</span><b id="stTokens">—</b></div>
+    </div>
+    <div class="sec">
+      <h3>主线进度</h3>
+      <div id="mainline"><span style="color:var(--dim);font-size:13px">（加载中…）</span></div>
+    </div>
+    <div class="sec">
+      <h3>人物册（群像）</h3>
+      <div id="roster"><span style="color:var(--dim);font-size:13px">（还没有登记的角色）</span></div>
     </div>
     <div class="sec">
       <h3>前情提要（压缩摘要）</h3>
@@ -211,6 +220,35 @@ function renderState(st) {
   $("stWindow").textContent = `${st.windowTurns} / ${st.totalTurns}`;
   $("summary").textContent = st.summary || "（暂无）";
   renderLedger(st.ledger);
+  renderMainline(st.mainline);
+  renderRoster(st.ledger.characters || []);
+}
+
+/** 人物册：把账本 characters 渲染成群像卡（状态高亮，呼应群像叙事） */
+function renderRoster(characters) {
+  const box = $("roster");
+  if (!characters.length) { box.innerHTML = '<span style="color:var(--dim);font-size:13px">（还没有登记的角色）</span>'; return; }
+  let html = "";
+  for (const c of characters.slice(-12).reverse()) {
+    const { key, name, ...rest } = c;
+    const status = rest.status || rest["状态"] || "";
+    const desc = Object.entries(rest).filter(([k, v]) => k !== "status" && k !== "状态" && v !== undefined && v !== null && v !== "")
+      .map(([k, v]) => `${k}：${typeof v === "object" ? JSON.stringify(v) : v}`).join("，").slice(0, 60);
+    const badge = status ? `<span style="color:var(--ok);font-size:11px;margin-left:6px;">${esc(status)}</span>` : "";
+    html += `<div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 9px;margin-bottom:6px;">`
+      + `<div style="font-size:13px;font-weight:700;">${esc(key || name || "?")}${badge}</div>`
+      + (desc ? `<div style="font-size:11px;color:var(--dim);margin-top:2px;">${esc(desc)}</div>` : "")
+      + `</div>`;
+  }
+  box.innerHTML = html;
+}
+
+function renderMainline(m) {
+  const box = $("mainline");
+  if (!m || !m.title) { box.innerHTML = '<span style="color:var(--dim);font-size:13px">（无主线）</span>'; return; }
+  let html = `<div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:6px;">${esc(m.title)}</div>`;
+  html += '<ul style="font-size:12px;line-height:1.7;">' + (m.objectives || []).map(o => `<li>· ${esc(o)}</li>`).join("") + '</ul>';
+  box.innerHTML = html;
 }
 
 /** 初始渲染历史消息（刷新/回档后恢复对话） */
@@ -292,9 +330,19 @@ function connect() {
       } else {
         $("stTools").textContent = msg.stats.tools.length ? `工具 ${msg.stats.tools.length} 次` : "无";
       }
+      $("stTokens").textContent = msg.stats.estTokens ? `≈ ${msg.stats.estTokens} token` : "—";
     }
     if (msg.type === "card") renderCard(msg.card);
     if (msg.type === "state") renderState(msg.state);
+    if (msg.type === "notice") {
+      const n = document.createElement("div");
+      n.className = "warn";
+      n.style.cssText = "white-space:pre-wrap;align-self:center;max-width:85%;";
+      n.textContent = "⚙ " + msg.text;
+      els.messages.appendChild(n);
+      scrollDown();
+    }
+    if (msg.type === "reload") { location.reload(); }
     if (msg.type === "warn") { const w = document.createElement("div"); w.className = "warn"; w.textContent = msg.message; els.messages.appendChild(w); scrollDown(); }
     if (msg.type === "error") {
       busy = false; streamingBubble = null; els.send.disabled = false; els.input.disabled = false;
@@ -319,6 +367,12 @@ async function sendChat() {
     return;
   }
   if (busy) return;
+  // 斜杠命令：不占用剧情回合，只发命令
+  if (text.startsWith("/")) {
+    els.input.value = "";
+    wsSend({ type: "command", text });
+    return;
+  }
   busy = true; els.send.disabled = true;
   els.input.value = "";
   addMsg("user", text);

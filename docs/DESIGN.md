@@ -59,10 +59,13 @@ Harness 的思路：**在模型外面加一层确定性运行时**，替模型�
 | 上下文工程 | `src/harness/context.ts` | 每轮重新组装：system(角色+世界状态) + 滑动窗口近期原文 + 早期摘要；超预算时把最旧剧情交给旁侧模型压缩成"剧情化摘要" |
 | 记忆账本 | `src/harness/memory-ledger.ts` | 回合结束后旁侧模型输出结构化 JSON（人物/物品/关系/时间/伏笔），合并写入 `state/ledger.json`，下轮注入 system；记账失败不影响剧情 |
 | 决策卡 | `src/harness/decision-card.ts` | 模型通过内置 `decide` 工具请求用户决策；harness 暂停循环，展示卡片，用户选择后注入继续；留痕 `state/decisions.jsonl` |
-| 角色卡 | `src/roleplay/character-card.ts` | 解析 SillyTavern v2 JSON 角色卡（name/description/personality/scenario/first_mes/mes_example） |
+| 角色卡 | `src/roleplay/character-card.ts` | 解析 SillyTavern v1/v2 JSON 角色卡（name/description/personality/scenario/first_mes/mes_example） |
+| PNG 卡 | `src/roleplay/png-card.ts` | 手写 PNG chunk 解析，提取 tEXt 内嵌角色卡（chara/ccv3） |
 | 世界书 | `src/roleplay/lorebook.ts` | 世界书 JSON：常驻条目 + 关键词激活条目，按当前上下文筛选注入 |
 | 工具 | `src/tools/registry.ts` | 工具 schema 注册 + 调度执行 |
-| 服务 | `src/server.ts` | Node http + WebSocket（Node 22 内置），托管前端 |
+| 主线导演 | `src/director/` | 三幕大纲 + 规则推进（关键词+回合门槛）；每轮生成【主线】指引与事件钩子；状态 `state/director.json` |
+| 世界线 | `src/harness/worldline.ts` | 六状态文件全量快照/回档，回档前自动留档 |
+| 服务 | `src/server.ts` | Node http + WebSocket（手写 RFC6455），REST API（状态/角色卡/快照），斜杠命令 |
 
 ## 4. 一轮对话的完整旅程
 
