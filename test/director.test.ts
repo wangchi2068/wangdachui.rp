@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Director } from "../src/director/director.ts";
-import { MAIN_ARC } from "../src/director/arc.ts";
+import { MAIN_ARC, type Phase } from "../src/director/arc.ts";
 
 function freshDir(): string {
   return mkdtempSync(join(tmpdir(), "rph-dir-"));
@@ -78,6 +78,25 @@ test("导演：reset 回到第一幕", () => {
     assert.equal(d.currentPhase().id, "p1-awakening");
     const d2 = new Director(dir);
     assert.equal(d2.currentPhase().id, "p1-awakening");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("导演：自定义 arc（战役包）——初始用 arc[0]，推进按战役关键词", () => {
+  const dir = freshDir();
+  try {
+    const lotmArc: Phase[] = [
+      { id: "m1-awakening", act: 1, title: "第一幕·穿越者", summary: "", objectives: ["弄明白穿越"], unlockKeywords: ["罗塞尔", "灰雾"], minTurns: 1 },
+      { id: "m2-seance", act: 1, title: "第二幕·通灵会", summary: "", objectives: ["参加通灵会"], unlockKeywords: ["通灵会"], minTurns: 1 },
+    ];
+    const d = new Director(dir, lotmArc);
+    assert.equal(d.currentPhase().id, "m1-awakening");
+    const r = d.advance("你翻开罗塞尔日记，眼前掠过灰雾", 2);
+    assert.equal(r.advanced, true);
+    assert.equal(d.currentPhase().id, "m2-seance");
+    const directive = d.buildDirective();
+    assert.ok(directive.includes("通灵会"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

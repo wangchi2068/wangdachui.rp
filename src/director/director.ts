@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { MAIN_ARC, type Phase } from "./arc.ts";
 
 export interface DirectorState {
-  /** 当前阶段在 MAIN_ARC 中的下标 */
+  /** 当前阶段在 arc 中的下标 */
   phaseIndex: number;
   /** 已推进过的阶段 id（留痕） */
   unlocked: string[];
@@ -11,7 +11,7 @@ export interface DirectorState {
   advancedAt?: string;
 }
 
-const defaultState = (): DirectorState => ({ phaseIndex: 0, unlocked: [MAIN_ARC[0]!.id] });
+const defaultState = (arc: Phase[]): DirectorState => ({ phaseIndex: 0, unlocked: [arc[0]!.id] });
 
 /**
  * 主线导演：以规则驱动三幕大纲的推进。
@@ -23,26 +23,28 @@ const defaultState = (): DirectorState => ({ phaseIndex: 0, unlocked: [MAIN_ARC[
  */
 export class Director {
   private stateDir: string;
+  private arc: Phase[];
   private state: DirectorState;
   /** 刚推进到新阶段、事件钩子待注入的标志（由调用方消费一次） */
   private pendingEvent = false;
 
-  constructor(stateDir: string) {
+  constructor(stateDir: string, arc: Phase[] = MAIN_ARC) {
     this.stateDir = stateDir;
+    this.arc = arc;
     this.state = this.load();
   }
 
   private load(): DirectorState {
     try {
       const raw = JSON.parse(readFileSync(resolve(this.stateDir, "director.json"), "utf8")) as Partial<DirectorState>;
-      const base = defaultState();
+      const base = defaultState(this.arc);
       return {
-        phaseIndex: typeof raw.phaseIndex === "number" && raw.phaseIndex >= 0 && raw.phaseIndex < MAIN_ARC.length ? raw.phaseIndex : 0,
+        phaseIndex: typeof raw.phaseIndex === "number" && raw.phaseIndex >= 0 && raw.phaseIndex < this.arc.length ? raw.phaseIndex : 0,
         unlocked: Array.isArray(raw.unlocked) ? raw.unlocked : base.unlocked,
         advancedAt: typeof raw.advancedAt === "string" ? raw.advancedAt : undefined,
       };
     } catch {
-      return defaultState();
+      return defaultState(this.arc);
     }
   }
 
@@ -53,13 +55,13 @@ export class Director {
 
   /** 重置主线（换卡/新会话时调用）：清空进度并落盘 */
   reset(): void {
-    this.state = defaultState();
+    this.state = defaultState(this.arc);
     this.pendingEvent = false;
     this.persist();
   }
 
   currentPhase(): Phase {
-    return MAIN_ARC[this.state.phaseIndex]!;
+    return this.arc[this.state.phaseIndex]!;
   }
 
   /** 检查事件钩子是否待注入，并消费该标志 */
@@ -75,14 +77,14 @@ export class Director {
    */
   advance(contextText: string, turnCount: number): { advanced: boolean; from?: Phase; to?: Phase } {
     const idx = this.state.phaseIndex;
-    if (idx >= MAIN_ARC.length - 1) return { advanced: false }; // 已是终局
-    const phase = MAIN_ARC[idx]!;
+    if (idx >= this.arc.length - 1) return { advanced: false }; // 已是终局
+    const phase = this.arc[idx]!;
     if (turnCount < phase.minTurns) return { advanced: false };
     const ctx = contextText.toLowerCase();
     const hit = phase.unlockKeywords.some((k) => ctx.includes(k.toLowerCase()));
     if (!hit) return { advanced: false };
 
-    const next = MAIN_ARC[idx + 1]!;
+    const next = this.arc[idx + 1]!;
     this.state.phaseIndex = idx + 1;
     this.state.unlocked.push(next.id);
     this.state.advancedAt = new Date().toISOString();

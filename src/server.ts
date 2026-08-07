@@ -19,6 +19,7 @@ import { LedgerService, snapshotText } from "./harness/memory-ledger.ts";
 import { ContextManager, estimateChars } from "./harness/context.ts";
 import { createSnapshot, deleteSnapshot, listSnapshots, restoreSnapshot } from "./harness/worldline.ts";
 import { Director } from "./director/director.ts";
+import type { Phase } from "./director/arc.ts";
 import { parseCard, type CharacterCard } from "./roleplay/character-card.ts";
 import { parsePngCard } from "./roleplay/png-card.ts";
 import { activateLoreHybrid, parseLorebook, type LorebookEntry } from "./roleplay/lorebook.ts";
@@ -33,6 +34,13 @@ if (!cfg.apiKey) {
   process.exit(1);
 }
 
+/** 战役包目录：LIYUAN_CAMPAIGN=lotm → assets/campaigns/lotm/（不存在则返回 null） */
+function campaignDir(): string | null {
+  if (!cfg.campaign) return null;
+  const dir = resolve(root, "assets/campaigns", cfg.campaign);
+  return existsSync(dir) ? dir : null;
+}
+
 const client = new LlmClient(cfg);
 const registry = new ToolRegistry({ stateDir: cfg.stateDir });
 registerBuiltinTools(registry, { stateDir: cfg.stateDir });
@@ -42,7 +50,21 @@ const ledgerService = new LedgerService(client, cfg.stateDir, cfg.scribeModel);
 
 let card: CharacterCard | null = loadDefaultCard();
 let ctx = new ContextManager(client, cfg);
-let director = new Director(cfg.stateDir);
+/** 战役主线：campaign/arc.json 的 phases 数组（无战役/无 arc.json 时返回 undefined → 用默认三幕） */
+function loadCampaignArc(): Phase[] | undefined {
+  const camp = campaignDir();
+  if (!camp) return undefined;
+  const arcFile = resolve(camp, "arc.json");
+  if (!existsSync(arcFile)) return undefined;
+  try {
+    const raw = JSON.parse(readFileSync(arcFile, "utf8")) as { phases?: Phase[] };
+    return Array.isArray(raw.phases) && raw.phases.length ? (raw.phases as Phase[]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+let director = new Director(cfg.stateDir, loadCampaignArc());
 let lastContext = "";
 
 /** 把当前生效角色卡持久化（仅在上传/回档后调用；默认卡以 assets 为兜底，不落盘） */
@@ -67,6 +89,20 @@ function resetWorld(): void {
 }
 
 function loadDefaultCard(): CharacterCard | null {
+  // 战役模式：优先读 campaign 目录下的 card-*.json
+  const camp = campaignDir();
+  if (camp) {
+    for (const f of readdirSync(camp)) {
+      if (!f.startsWith("card-") || !f.endsWith(".json")) continue;
+      try {
+        const parsed = parseCard(JSON.parse(readFileSync(resolve(camp, f), "utf8")));
+        if (parsed) return parsed;
+      } catch {
+        /* 跳过损坏的战役卡 */
+      }
+    }
+    console.warn(`[campaign] ${cfg.campaign} 下未找到 card-*.json，回退默认卡`);
+  }
   const saved = resolve(root, "state/card.json");
   if (existsSync(saved)) {
     try {
@@ -103,10 +139,23 @@ function buildSystem(): string {
   return blocks.join("\n\n");
 }
 
-/** 汇总可用的世界书条目：卡内嵌 book + assets/lorebooks/*.json */
+/** 汇总可用的世界书条目：卡内嵌 book + 战役 worldbook.json（战役模式）或 assets/lorebooks/*.json */
 function allLoreEntries(): LorebookEntry[] {
   const fromCard = card?.characterBook ?? [];
   const fromFiles: LorebookEntry[] = [];
+  const camp = campaignDir();
+  if (camp) {
+    // 战役模式：只读 campaign/worldbook.json（不混入都市修仙 lorebooks）
+    const wb = resolve(camp, "worldbook.json");
+    if (existsSync(wb)) {
+      try {
+        fromFiles.push(...parseLorebook(JSON.parse(readFileSync(wb, "utf8"))));
+      } catch {
+        /* 跳过损坏的世界书 */
+      }
+    }
+    return [...fromCard, ...fromFiles];
+  }
   const dir = resolve(root, "assets/lorebooks");
   if (existsSync(dir)) {
     for (const f of readdirSync(dir)) {
@@ -232,7 +281,7 @@ const server = createServer(async (req, res) => {
       }
       // 重建内存态：上下文管理器（回合/摘要）与角色卡都从磁盘重新加载
       ctx = new ContextManager(client, cfg);
-      director = new Director(cfg.stateDir); // 主线进度随快照回档
+      director = new Director(cfg.stateDir, loadCampaignArc()); // 主线进度随快照回档
       card = loadDefaultCard();
       persistCurrentCard();
       lastContext = "";
@@ -453,7 +502,7 @@ async function handleCommand(conn: Connection, text: string): Promise<void> {
           break;
         }
         ctx = new ContextManager(client, cfg);
-        director = new Director(cfg.stateDir);
+        director = new Director(cfg.stateDir, loadCampaignArc());
         card = loadDefaultCard();
         persistCurrentCard();
         lastContext = "";

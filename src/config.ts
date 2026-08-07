@@ -16,6 +16,8 @@ export interface Config {
   stateDir: string;
   /** 每 N 回合自动存档（0 = 关闭） */
   autoSnapshotEvery: number;
+  /** 战役包名：存在时从 assets/campaigns/<name>/ 加载卡与世界书（默认 undefined = 都市修仙） */
+  campaign?: string;
 }
 
 /** 极简 .env 加载器（不覆盖已存在的环境变量） */
@@ -45,5 +47,6 @@ export function loadConfig(): Config {
     maxLoopTurns: Number(process.env.LIYUAN_MAX_LOOP_TURNS ?? 10),
     stateDir: resolve(process.cwd(), "state"),
     autoSnapshotEvery: Number(process.env.LIYUAN_AUTO_SNAPSHOT_EVERY ?? 5),
+    campaign: process.env.LIYUAN_CAMPAIGN || undefined,
   };
 }
