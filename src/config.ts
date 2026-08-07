@@ -37,16 +37,19 @@ export function loadEnvFile(envPath = resolve(process.cwd(), ".env")): void {
 
 export function loadConfig(): Config {
   loadEnvFile();
+  // 无状态环境（Vercel 等）：state 落 /tmp（实例临时盘，单用户/低流量可跑；实例回收会丢档）
+  const isVercel = process.env.VERCEL === "1";
+  const stateMode = process.env.WANGDACHUI_STATE_MODE ?? (isVercel ? "tmp" : "disk");
   return {
-    apiBase: process.env.LIYUAN_API_BASE ?? "https://tokenrhythm.studio/v1",
-    apiKey: process.env.LIYUAN_API_KEY ?? "",
-    model: process.env.LIYUAN_MODEL ?? "deepseek-v4-flash-0731",
-    scribeModel: process.env.LIYUAN_SCRIBE_MODEL || undefined,
-    compressModel: process.env.LIYUAN_COMPRESS_MODEL || undefined,
-    contextBudgetChars: Number(process.env.LIYUAN_CONTEXT_BUDGET_CHARS ?? 24000),
-    maxLoopTurns: Number(process.env.LIYUAN_MAX_LOOP_TURNS ?? 10),
-    stateDir: resolve(process.cwd(), "state"),
-    autoSnapshotEvery: Number(process.env.LIYUAN_AUTO_SNAPSHOT_EVERY ?? 5),
-    campaign: process.env.LIYUAN_CAMPAIGN || undefined,
+    apiBase: process.env.WANGDACHUI_API_BASE ?? "https://tokenrhythm.studio/v1",
+    apiKey: process.env.WANGDACHUI_API_KEY ?? "",
+    model: process.env.WANGDACHUI_MODEL ?? "deepseek-v4-flash-0731",
+    scribeModel: process.env.WANGDACHUI_SCRIBE_MODEL || undefined,
+    compressModel: process.env.WANGDACHUI_COMPRESS_MODEL || undefined,
+    contextBudgetChars: Number(process.env.WANGDACHUI_CONTEXT_BUDGET_CHARS ?? 24000),
+    maxLoopTurns: Number(process.env.WANGDACHUI_MAX_LOOP_TURNS ?? 10),
+    stateDir: stateMode === "tmp" ? resolve("/tmp", "wangdachui-state") : resolve(process.cwd(), "state"),
+    autoSnapshotEvery: Number(process.env.WANGDACHUI_AUTO_SNAPSHOT_EVERY ?? 5),
+    campaign: process.env.WANGDACHUI_CAMPAIGN || undefined,
   };
 }

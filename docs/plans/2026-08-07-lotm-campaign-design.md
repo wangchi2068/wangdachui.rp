@@ -1,4 +1,4 @@
-# 战役包设计：《诡秘之主·廷根篇》RP-Harness 战役
+# 战役包设计：《诡秘之主·廷根篇》wangdachui.pi 战役
 
 > 日期：2026-08-07
 > 状态：已确认（brainstorming 完成），待实现
@@ -8,11 +8,11 @@
 
 ## 一、目标与定位
 
-在现有 RP-Harness 上新增一个**可切换战役包**，玩家以克莱恩·莫雷蒂第一视角体验《诡秘之主》廷根市篇（原著第一部的第一章主线），核心体验是"高自由度、选择有后果、多线可换"的叙事——而非数值战斗。
+在现有 wangdachui.pi 上新增一个**可切换战役包**，玩家以克莱恩·莫雷蒂第一视角体验《诡秘之主》廷根市篇（原著第一部的第一章主线），核心体验是"高自由度、选择有后果、多线可换"的叙事——而非数值战斗。
 
 - 现有都市修仙（玄一线）原样保留，作为沙盒测试田
 - 战役包 = 一套可切换的 assets（世界书/角色卡/主线/触发规则），零核心代码改动起步
-- 服务器启动时用环境变量切换：`LIYUAN_CAMPAIGN=lotm`（默认不设 = 都市修仙）
+- 服务器启动时用环境变量切换：`WANGDACHUI_CAMPAIGN=lotm`（默认不设 = 都市修仙）
 
 ---
 
@@ -95,7 +95,7 @@ assets/campaigns/lotm/
 └── README.md           # 战役说明（如何切换、如何玩）
 ```
 
-**服务器切换**：`LIYUAN_CAMPAIGN=lotm` 时，加载上述资产替代默认 assets/cards/xiuxian.json + assets/lorebooks/*.json。
+**服务器切换**：`WANGDACHUI_CAMPAIGN=lotm` 时，加载上述资产替代默认 assets/cards/xiuxian.json + assets/lorebooks/*.json。
 
 ---
 
@@ -124,7 +124,7 @@ assets/campaigns/lotm/
 
 1. ✅ 前端交互优化（已提交）
 2. ⬜ 战役包资产（worldbook/actors/arc/intro）——本次实现
-3. ⬜ 服务器战役切换（LIYUAN_CAMPAIGN 环境变量 + 加载逻辑）
+3. ⬜ 服务器战役切换（WANGDACHUI_CAMPAIGN 环境变量 + 加载逻辑）
 4. ⬜ 端到端验证（浏览器玩序章）
 5. ⬜ 后续迭代：非凡百科面板、幕二~幕六剧本细化、记忆货币、多结局
 

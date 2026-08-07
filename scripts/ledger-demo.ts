@@ -20,7 +20,7 @@ const CHARACTER_SYSTEM = `你是「${CHARACTER_NAME}」，寄居在古玉里的�
 
 const cfg = loadConfig();
 if (!cfg.apiKey) {
-  console.error("缺少 LIYUAN_API_KEY：请检查 .env 文件");
+  console.error("缺少 WANGDACHUI_API_KEY：请检查 .env 文件");
   process.exit(1);
 }
 

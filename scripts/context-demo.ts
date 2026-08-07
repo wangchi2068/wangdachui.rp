@@ -6,7 +6,7 @@
  *
  * 用法：node scripts/context-demo.ts
  */
-process.env.LIYUAN_CONTEXT_BUDGET_CHARS = "1500"; // 调小预算，强制触发压缩
+process.env.WANGDACHUI_CONTEXT_BUDGET_CHARS = "1500"; // 调小预算，强制触发压缩
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -23,7 +23,7 @@ import { buildSystemPrompt } from "../src/roleplay/assemble.ts";
 const root = process.cwd();
 const cfg = loadConfig();
 if (!cfg.apiKey) {
-  console.error("缺少 LIYUAN_API_KEY：请检查 .env 文件");
+  console.error("缺少 WANGDACHUI_API_KEY：请检查 .env 文件");
   process.exit(1);
 }
 

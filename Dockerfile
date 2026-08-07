@@ -12,7 +12,7 @@ COPY assets ./assets
 COPY scripts ./scripts
 
 ENV NODE_ENV=production \
-    LIYUAN_PORT=7620
+    WANGDACHUI_PORT=7620
 
 EXPOSE 7620
 

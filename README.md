@@ -1,6 +1,6 @@
-# RP-Harness · 角色扮演 Agent
+# wangdachui.pi · 角色扮演 Agent
 
-基于 LLM 的**角色扮演 Agent Harness**：在模型与用户之间加一层确定性运行时——上下文工程（每轮裁剪、摘要压缩）、结构化记忆账本（旁侧模型自动记账）、工具调用循环、决策卡交互。
+基于 LLM 的**角色扮演 Agent Harness**（wangdachui.pi）：在模型与用户之间加一层确定性运行时——上下文工程（每轮裁剪、摘要压缩）、结构化记忆账本（旁侧模型自动记账）、工具调用循环、决策卡交互。
 
 **零运行时依赖**：Node 内置 fetch / WebSocket 客户端 + 手写 RFC6455 服务端协议层。
 
@@ -17,7 +17,7 @@
 | **角色卡/世界书** | SillyTavern v1/v2 JSON **与 PNG 内嵌卡**（手写 PNG chunk 解析）、世界书混合激活：关键词精确命中 + **本地向量语义召回**（字符 n-gram TF-IDF + 余弦相似度，零依赖离线可跑，剧情不提关键词也能命中相关设定） |
 | **世界线存档** | 六状态文件全量快照（含主线进度/角色卡），回档即整体替换；每 N 回合自动存档防丢档 |
 | **斜杠命令** | `/state` 看账本 · `/snap` 存档 · `/back` 回档 · `/new` 新会话 · `/lore` 查世界书 · `/phase` 主线进度 |
-| **多模型分级** | 记账/压缩可用便宜模型（`LIYUAN_SCRIBE_MODEL` / `LIYUAN_COMPRESS_MODEL`），主剧情用主模型 |
+| **多模型分级** | 记账/压缩可用便宜模型（`WANGDACHUI_SCRIBE_MODEL` / `WANGDACHUI_COMPRESS_MODEL`），主剧情用主模型 |
 | **Web 界面** | 聊天流式输出、决策卡、账本/人物册/主线进度/上下文统计面板、角色卡上传（手写 WebSocket + Node http，零依赖） |
 | **工程化** | 27+ 单元测试（mock LLM）、tsc 严格模式、GitHub Actions CI、Docker 一键部署 |
 
@@ -26,7 +26,7 @@
 前置：Node.js ≥ 22（原生支持 TypeScript 与 fetch）。
 
 ```bash
-cp .env.example .env   # 填入 LIYUAN_API_KEY 等（.env 已被 gitignore）
+cp .env.example .env   # 填入 WANGDACHUI_API_KEY 等（.env 已被 gitignore）
 npm install            # 仅 devDependencies（typescript 等，运行时零依赖）
 npm run web            # 打开 http://127.0.0.1:7620
 ```

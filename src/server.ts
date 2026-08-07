@@ -1,14 +1,14 @@
 /**
- * RP-Harness Web 服务：手写 WebSocket（RFC6455）+ Node http 静态托管 + REST API。
+ * wangdachui.pi Web 服务：手写 WebSocket（RFC6455）+ Node http 静态托管 + REST API。
  * 零第三方依赖：Node 内置 http/fetch/WebSocket 客户端 + 手写协议层。
  *
  * 启动：npm run web  →  http://127.0.0.1:7620
  */
-import { createServer, type IncomingMessage } from "node:http";
-import { createHash } from "node:crypto";
-import type { Socket } from "node:net";
+import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { WebSocketServer, type WebSocket } from "ws";
 import { loadConfig } from "./config.ts";
 import { LlmClient, type ChatMessage } from "./llm/client.ts";
 import { ToolRegistry } from "./tools/registry.ts";
@@ -26,15 +26,17 @@ import { activateLoreHybrid, parseLorebook, type LorebookEntry } from "./rolepla
 import { VectorIndex } from "./roleplay/vector.ts";
 import { buildSystemPrompt } from "./roleplay/assemble.ts";
 
-const PORT = Number(process.env.LIYUAN_PORT ?? 7620);
-const root = process.cwd();
+const PORT = Number(process.env.WANGDACHUI_PORT ?? 7620);
+// 资源根目录：优先用 import.meta.url 定位（Vercel 打包器可静态识别，能正确带上 web/ 与 assets/）；
+// 本地 node 直跑时 import.meta.url 也指向 src/ 同级，行为一致。
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cfg = loadConfig();
 if (!cfg.apiKey) {
-  console.error("缺少 LIYUAN_API_KEY：请检查 .env 文件");
+  console.error("缺少 WANGDACHUI_API_KEY：请检查 .env 文件");
   process.exit(1);
 }
 
-/** 战役包目录：LIYUAN_CAMPAIGN=lotm → assets/campaigns/lotm/（不存在则返回 null） */
+/** 战役包目录：WANGDACHUI_CAMPAIGN=lotm → assets/campaigns/lotm/（不存在则返回 null） */
 function campaignDir(): string | null {
   if (!cfg.campaign) return null;
   const dir = resolve(root, "assets/campaigns", cfg.campaign);
@@ -152,7 +154,7 @@ function loadHistoryTurns(): HistoryTurn[] {
 function buildExportMarkdown(): string {
   const cardName = card?.name ?? "（未导入角色卡）";
   const lines: string[] = [
-    `# RP-Harness 对话记录`,
+    `# wangdachui.pi 对话记录`,
     ``,
     `> 角色：${cardName}`,
     `> 导出时间：${new Date().toLocaleString("zh-CN")}`,
@@ -204,7 +206,7 @@ function buildExportWordHtml(md: string): string {
       return `<p style="white-space:pre-wrap;line-height:1.7;">${esc(b)}</p>`;
     })
     .join("\n");
-  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>RP-Harness 对话记录</title></head><body style="font-family:'Microsoft YaHei',sans-serif;max-width:760px;margin:24px auto;color:#222;">${body}</body></html>`;
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>wangdachui.pi 对话记录</title></head><body style="font-family:'Microsoft YaHei',sans-serif;max-width:760px;margin:24px auto;color:#222;">${body}</body></html>`;
 }
 
 function buildSystem(): string {
@@ -424,150 +426,60 @@ const server = createServer(async (req, res) => {
   }
 });
 
-/* ─────────────── WebSocket（手写 RFC6455） ─────────────── */
+/* ─────────────── WebSocket（ws 库，兼容 Vercel/本地） ─────────────── */
 
 interface Connection {
-  socket: Socket;
+  socket: WebSocket;
   send(obj: unknown): void;
 }
 
-const connections = new Set<Socket>();
+const connections = new Set<WebSocket>();
 let pendingDecision: { resolve: (choice: string) => void } | null = null;
 
-const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const wss = new WebSocketServer({ server, path: "/ws" });
 
-function sendFrame(socket: Socket, opcode: number, payload: Buffer): void {
-  let header: Buffer;
-  if (payload.length < 126) {
-    header = Buffer.from([0x80 | opcode, payload.length]);
-  } else if (payload.length < 65536) {
-    header = Buffer.alloc(4);
-    header[0] = 0x80 | opcode;
-    header[1] = 126;
-    header.writeUInt16BE(payload.length, 2);
-  } else {
-    header = Buffer.alloc(10);
-    header[0] = 0x80 | opcode;
-    header[1] = 127;
-    header.writeBigUInt64BE(BigInt(payload.length), 2);
-  }
-  socket.write(Buffer.concat([header, payload]));
-}
-
-/** 增量解析客户端帧（支持 126/127 长度与掩码；text/continuation/close/ping） */
-function frameParser(socket: Socket, onText: (s: string) => void, onClose: () => void): void {
-  let buffer = Buffer.alloc(0);
-  let textAccum = "";
-  socket.on("data", (chunk: Buffer) => {
-    buffer = Buffer.concat([buffer, chunk]);
-    while (buffer.length >= 2) {
-      const b0 = buffer.readUInt8(0);
-      const opcode = b0 & 0x0f;
-      const b1 = buffer.readUInt8(1);
-      const masked = (b1 & 0x80) !== 0;
-      let len = b1 & 0x7f;
-      let offset = 2;
-      if (len === 126) {
-        if (buffer.length < 4) return;
-        len = buffer.readUInt16BE(2);
-        offset = 4;
-      } else if (len === 127) {
-        if (buffer.length < 10) return;
-        len = Number(buffer.readBigUInt64BE(2));
-        offset = 10;
-      }
-      let maskKey: Buffer | null = null;
-      if (masked) {
-        if (buffer.length < offset + 4) return;
-        maskKey = buffer.subarray(offset, offset + 4);
-        offset += 4;
-      }
-      if (buffer.length < offset + len) return;
-      const payload = Buffer.from(buffer.subarray(offset, offset + len));
-      buffer = buffer.subarray(offset + len);
-      if (maskKey) {
-        for (let i = 0; i < payload.length; i++) {
-          const byte = payload[i] ?? 0;
-          payload[i] = byte ^ (maskKey[i & 3] ?? 0);
-        }
-      }
-      if (opcode === 0x8) {
-        socket.end();
-        onClose();
-        return;
-      }
-      if (opcode === 0x9) {
-        sendFrame(socket, 0xa, payload); // ping → pong
-        continue;
-      }
-      if (opcode === 0x1 || opcode === 0x0) {
-        textAccum += payload.toString("utf8");
-        if (b0 & 0x80) {
-          onText(textAccum);
-          textAccum = "";
-        }
-      }
-    }
-  });
-}
-
-server.on("upgrade", (req: IncomingMessage, socket: Socket) => {
-  // 客户端异常断开（ECONNRESET 等）绝不能崩进程：所有 socket 一律兜底 error
-  socket.on("error", (err) => {
+wss.on("connection", (socket: WebSocket) => {
+  // 客户端异常断开（ECONNRESET 等）绝不能崩进程：一律兜底 error
+  socket.on("error", () => {
     connections.delete(socket);
-    pendingDecision = null;
+    if (pendingDecision) pendingDecision = null;
   });
-  const key = req.headers["sec-websocket-key"];
-  if (req.url !== "/ws" || typeof key !== "string") {
-    socket.destroy();
-    return;
-  }
-  const accept = createHash("sha1").update(key + WS_GUID).digest("base64");
-  socket.write(
-    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " +
-      accept +
-      "\r\n\r\n",
-  );
   const conn: Connection = {
     socket,
     send: (obj) => {
-      if (!socket.destroyed) sendFrame(socket, 0x1, Buffer.from(JSON.stringify(obj), "utf8"));
+      if (socket.readyState === 1 /* OPEN */) socket.send(JSON.stringify(obj));
     },
   };
   connections.add(socket);
   conn.send({ type: "init", state: collectState() });
-  frameParser(
-    socket,
-    (data) => {
-      let msg: { type?: string; text?: string };
-      try {
-        msg = JSON.parse(data);
-      } catch {
-        return;
-      }
-      if (msg.type === "chat" && typeof msg.text === "string") {
-        // 决策卡挂起时，普通输入视为自由选择（防止"没人点卡片 → 对话卡死"）
-        if (pendingDecision) {
-          const p = pendingDecision;
-          pendingDecision = null;
-          p.resolve(msg.text);
-          conn.send({ type: "warn", message: "已把你的输入作为决策卡的自由选择：" + msg.text });
-        } else {
-          void handleChat(conn, msg.text);
-        }
-      }
-      if (msg.type === "command" && typeof msg.text === "string") void handleCommand(conn, msg.text);
-      if (msg.type === "choice" && typeof msg.text === "string" && pendingDecision) {
+  socket.on("message", (data: Buffer | ArrayBuffer | Buffer[]) => {
+    let msg: { type?: string; text?: string };
+    try {
+      msg = JSON.parse(Buffer.isBuffer(data) ? data.toString("utf8") : String(data));
+    } catch {
+      return;
+    }
+    if (msg.type === "chat" && typeof msg.text === "string") {
+      // 决策卡挂起时，普通输入视为自由选择（防止"没人点卡片 → 对话卡死"）
+      if (pendingDecision) {
         const p = pendingDecision;
         pendingDecision = null;
         p.resolve(msg.text);
+        conn.send({ type: "warn", message: "已把你的输入作为决策卡的自由选择：" + msg.text });
+      } else {
+        void handleChat(conn, msg.text);
       }
-    },
-    () => connections.delete(socket),
-  );
+    }
+    if (msg.type === "command" && typeof msg.text === "string") void handleCommand(conn, msg.text);
+    if (msg.type === "choice" && typeof msg.text === "string" && pendingDecision) {
+      const p = pendingDecision;
+      pendingDecision = null;
+      p.resolve(msg.text);
+    }
+  });
   socket.on("close", () => {
     connections.delete(socket);
-    pendingDecision = null;
+    if (pendingDecision) pendingDecision = null;
   });
 });
 
@@ -728,6 +640,6 @@ async function handleChat(conn: Connection, text: string): Promise<void> {
 }
 
 server.listen(PORT, () => {
-  console.log(`✦ RP-Harness 已启动：http://127.0.0.1:${PORT}`);
+  console.log(`✦ wangdachui.pi 已启动：http://127.0.0.1:${PORT}`);
   console.log(`  模型：${cfg.model} | 角色卡：${card?.name ?? "无"}`);
 });

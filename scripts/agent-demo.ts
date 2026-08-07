@@ -15,7 +15,7 @@ const userInput = process.argv.slice(2).join(" ") || "请先读取世界状态�
 
 const cfg = loadConfig();
 if (!cfg.apiKey) {
-  console.error("缺少 LIYUAN_API_KEY：请检查 .env 文件");
+  console.error("缺少 WANGDACHUI_API_KEY：请检查 .env 文件");
   process.exit(1);
 }
 

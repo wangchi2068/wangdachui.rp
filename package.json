@@ -1,7 +1,7 @@
 {
-  "name": "rp-harness",
+  "name": "wangdachui-pi",
   "version": "0.1.0",
-  "description": "LLM 角色扮演 Agent Harness：上下文工程、结构化记忆账本、工具调用循环、决策卡交互",
+  "description": "wangdachui.pi：基于 LLM 的角色扮演 Agent Harness——上下文工程、结构化记忆账本、工具调用循环、决策卡交互",
   "type": "module",
   "private": true,
   "engines": {
@@ -14,7 +14,11 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.9.3",
     "typescript-language-server": "^5.3.0"
+  },
+  "dependencies": {
+    "ws": "^8.21.2"
   }
 }

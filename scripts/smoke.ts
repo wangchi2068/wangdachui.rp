@@ -9,7 +9,7 @@ const prompt = process.argv.slice(2).join(" ") || "用一句话介绍你自己";
 
 const cfg = loadConfig();
 if (!cfg.apiKey) {
-  console.error("缺少 LIYUAN_API_KEY：请检查 .env 文件");
+  console.error("缺少 WANGDACHUI_API_KEY：请检查 .env 文件");
   process.exit(1);
 }
 

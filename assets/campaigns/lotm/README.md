@@ -9,10 +9,10 @@
 
 ```bash
 # Windows PowerShell
-$env:LIYUAN_CAMPAIGN="lotm"; npm run web
+$env:WANGDACHUI_CAMPAIGN="lotm"; npm run web
 
 # Git Bash
-LIYUAN_CAMPAIGN=lotm npm run web
+WANGDACHUI_CAMPAIGN=lotm npm run web
 
 # 不设置 = 默认都市修仙（玄一线）
 npm run web
