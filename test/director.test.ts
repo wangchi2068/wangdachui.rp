@@ -101,3 +101,26 @@ test("导演：自定义 arc（战役包）——初始用 arc[0]，推进按战
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("导演：防连跳——间隔不足 2 回合不推进", () => {
+  const dir = freshDir();
+  try {
+    const arc: Phase[] = [
+      { id: "a", act: 1, title: "幕A", summary: "", objectives: [], unlockKeywords: ["x"], minTurns: 1 },
+      { id: "b", act: 1, title: "幕B", summary: "", objectives: [], unlockKeywords: ["x"], minTurns: 1 },
+      { id: "c", act: 1, title: "幕C", summary: "", objectives: [], unlockKeywords: ["x"], minTurns: 1 },
+    ];
+    const d = new Director(dir, arc);
+    // 回合1：推进到 B
+    assert.equal(d.advance("x", 1).advanced, true);
+    // 回合1 再次调用：间隔 0 < 2，不推进
+    assert.equal(d.advance("x", 1).advanced, false);
+    // 回合2：间隔 1 < 2，仍不推进
+    assert.equal(d.advance("x", 2).advanced, false);
+    // 回合3：间隔 2 >= 2，推进到 C
+    assert.equal(d.advance("x", 3).advanced, true);
+    assert.equal(d.currentPhase().id, "c");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

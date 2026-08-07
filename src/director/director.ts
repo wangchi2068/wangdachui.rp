@@ -9,6 +9,8 @@ export interface DirectorState {
   unlocked: string[];
   /** 推进时间 */
   advancedAt?: string;
+  /** 最近一次推进时的回合数（防连跳：间隔不足不再推进） */
+  lastAdvanceTurn?: number;
 }
 
 const defaultState = (arc: Phase[]): DirectorState => ({ phaseIndex: 0, unlocked: [arc[0]!.id] });
@@ -42,6 +44,7 @@ export class Director {
         phaseIndex: typeof raw.phaseIndex === "number" && raw.phaseIndex >= 0 && raw.phaseIndex < this.arc.length ? raw.phaseIndex : 0,
         unlocked: Array.isArray(raw.unlocked) ? raw.unlocked : base.unlocked,
         advancedAt: typeof raw.advancedAt === "string" ? raw.advancedAt : undefined,
+        lastAdvanceTurn: typeof raw.lastAdvanceTurn === "number" ? raw.lastAdvanceTurn : undefined,
       };
     } catch {
       return defaultState(this.arc);
@@ -80,6 +83,10 @@ export class Director {
     if (idx >= this.arc.length - 1) return { advanced: false }; // 已是终局
     const phase = this.arc[idx]!;
     if (turnCount < phase.minTurns) return { advanced: false };
+    // 防连跳：距上次推进不足 2 回合不推进（关键词连续命中时也按节奏走）
+    if (this.state.lastAdvanceTurn !== undefined && turnCount - this.state.lastAdvanceTurn < 2) {
+      return { advanced: false };
+    }
     const ctx = contextText.toLowerCase();
     const hit = phase.unlockKeywords.some((k) => ctx.includes(k.toLowerCase()));
     if (!hit) return { advanced: false };
@@ -88,6 +95,7 @@ export class Director {
     this.state.phaseIndex = idx + 1;
     this.state.unlocked.push(next.id);
     this.state.advancedAt = new Date().toISOString();
+    this.state.lastAdvanceTurn = turnCount;
     this.pendingEvent = true;
     this.persist();
     return { advanced: true, from: phase, to: next };

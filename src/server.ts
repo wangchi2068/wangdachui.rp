@@ -215,12 +215,31 @@ function buildSystem(): string {
       card,
       lore: lore.entries,
       ledgerSnapshot: snapshotText(ledgerService.load()),
-      extraRules: "用第一人称扮演角色，保持人设；遇到重大剧情转折时用 decide 工具把候选方向做成卡片询问用户，不要滥用。",
+      extraRules: buildExtraRules(),
     }),
   ];
   const directive = director.buildDirective();
   if (directive) blocks.push(directive);
   return blocks.join("\n\n");
+}
+
+/** 动态补充规则：根据玩家上一条输入形态注入针对性指引（短输入/走偏处理） */
+function buildExtraRules(): string {
+  const rules = ["用第一人称扮演角色，保持人设；遇到重大剧情转折时用 decide 工具把候选方向做成卡片询问用户，不要滥用。"];
+  const last = (lastContext || "").trim();
+  // 短输入（<=12 字且不含标点长句）：注入兜底指引，AI 自动推进并给可选行动
+  if (last.length > 0 && last.length <= 12) {
+    rules.push(
+      "【短输入指引】玩家上一条输入很简短（可能只是'继续/嗯/看看'）。不要反问玩家想做什么：按克莱恩谨慎理性的人设自动推进剧情一小步，并在回复结尾用【你可以…】列出 2-3 个具体可选行动（每个 1-2 个短句），玩家回一个字或序号即可继续。",
+    );
+  }
+  // 玩家明确拒绝/走偏：提示后果真实但主线会拉回
+  if (/拒绝|不去|算了|不干|不要|走开|离开|不想/.test(last)) {
+    rules.push(
+      "【偏离处理】玩家可能拒绝了某个邀约/线索。后果要真实（对方失望、线索关闭、处境更险），但关键剧情节点不能被跳过：用世界因果让关键事件以另一种方式再次找上玩家（如被邪教盯上→被迫求助；镜子作祟→不得不查）。永远给玩家重新选择的机会。",
+    );
+  }
+  return rules.join("\n");
 }
 
 /** 汇总可用的世界书条目：卡内嵌 book + 战役 worldbook.json（战役模式）或 assets/lorebooks/*.json */

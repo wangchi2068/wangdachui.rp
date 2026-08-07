@@ -68,10 +68,13 @@ export class LlmClient {
     if (opts.temperature !== undefined) body.temperature = opts.temperature;
     if (opts.maxTokens !== undefined) body.max_tokens = opts.maxTokens;
 
-    // 网络/5xx/429 重试（最多 2 次，指数退避）；4xx 业务错误不重试
+    // 网络/5xx/429/超时重试（最多 2 次，指数退避）；4xx 业务错误不重试
     const MAX_RETRY = 2;
+    const TIMEOUT_MS = 90_000; // 单次请求超时（防上游 API 挂起导致前端永久"生成中"）
     let lastErr: unknown = null;
     for (let attempt = 0; attempt <= MAX_RETRY; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
       try {
         const res = await fetch(`${this.cfg.apiBase}/chat/completions`, {
           method: "POST",
@@ -80,13 +83,20 @@ export class LlmClient {
             Authorization: `Bearer ${this.cfg.apiKey}`,
           },
           body: JSON.stringify(body),
+          signal: controller.signal,
         });
         if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 429)) return res;
         lastErr = new ApiError(res.status, await res.text());
       } catch (e) {
-        lastErr = e; // 网络层错误
+        lastErr = e; // 网络层错误 / 超时（AbortError）
+      } finally {
+        clearTimeout(timer);
       }
       if (attempt < MAX_RETRY) await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+    }
+    // 重试耗尽：把 AbortError 转成可读错误
+    if (lastErr instanceof Error && lastErr.name === "AbortError") {
+      throw new Error(`请求超时（${TIMEOUT_MS / 1000}s × ${MAX_RETRY + 1} 次）：上游 API 无响应，请重试或检查网络`);
     }
     throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
