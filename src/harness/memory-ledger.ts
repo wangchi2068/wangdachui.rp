@@ -61,9 +61,10 @@ export function extractJson(text: string): unknown | null {
     }
   }
   const fenced = t.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced) {
+  const fencedBody = fenced?.[1];
+  if (fencedBody) {
     try {
-      return JSON.parse(fenced[1].trim());
+      return JSON.parse(fencedBody.trim());
     } catch {
       /* fall through */
     }

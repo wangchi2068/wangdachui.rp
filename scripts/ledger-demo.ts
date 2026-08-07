@@ -1,5 +1,5 @@
 /**
- * 记忆账本演示：旁侧模型自动记账 + 账本快照注入。
+ * 记忆账本演示（都市修仙版）：旁侧模型自动记账 + 账本快照注入。
  *
  * 流程：
  *  第 1 轮：用户输入一段有信息量的剧情 → harness 生成正文 → 旁侧模型记账 → 展示账本；
@@ -14,9 +14,9 @@ import { registerBuiltinTools } from "../src/tools/builtin.ts";
 import { Harness } from "../src/harness/harness.ts";
 import { LedgerService, snapshotText } from "../src/harness/memory-ledger.ts";
 
-const CHARACTER_NAME = "李白";
-const CHARACTER_SYSTEM = `你是「${CHARACTER_NAME}」，大唐剑客，诗酒风流，手持青莲剑。
-你正与一位朋友（用户）在江湖中同行。用第一人称扮演，保持角色性格，回应不超过 200 字。`;
+const CHARACTER_NAME = "玄一";
+const CHARACTER_SYSTEM = `你是「${CHARACTER_NAME}」，寄居在古玉里的上古剑仙残魂，嘴毒心软，爱用网络梗怼人。
+你与小林（用户）挤在 15 平出租屋——他修仙，他还房贷。用第一人称扮演，保持毒舌人设，回应不超过 200 字。`;
 
 const cfg = loadConfig();
 if (!cfg.apiKey) {
@@ -58,16 +58,25 @@ async function playTurn(history: ChatMessage[], userInput: string): Promise<Chat
   return result.added;
 }
 
-// 第 1 轮：建立人物、物品、关系
+// 第 1 轮：建立人物、物品、关系、伏笔
 let history: ChatMessage[] = [];
-history.push(...(await playTurn(history, "我是你的朋友小舟。今天你我在蜀道遇见魔教圣女月儿，你与她交手三回合后收剑，她对你露出莫名的微笑，说'后会无期'便隐入雾中。你似乎对她生出了兴趣。")));
+history.push(
+  ...(await playTurn(
+    history,
+    "我是小林，刚被天工科技裁掉的程序员。昨晚我在出租屋楼下捡到你这块玉佩，你说要教我修仙。今天下班我路过公司楼下新开的灵气便利店，老板娘看不清脸，递给我一杯符水美式，说：加班的人，喝这个，续命。",
+  )),
+);
 
-// 展示第 1 轮后的账本
 console.log("\n──────────────── 第 1 轮后的账本 ────────────────");
 console.log(JSON.stringify(ledger.load(), null, 2).slice(0, 900));
 
 // 第 2 轮：新增物品 + 关系发展，验证合并与去重
-history.push(...(await playTurn(history, "第二天清晨，我在你枕边发现一朵带露的紫色花，花瓣上有月儿的气息。你拿起它端详良久，说：'是她。'然后小心地收进了衣襟。")));
+history.push(
+  ...(await playTurn(
+    history,
+    "我喝了符水美式，居然真的能看见灵光了！下班路上，一只雪白的狐狸叼着外卖盒跟了我一路，盒子上印着妖狐同城。你说她是妖，让我别理，可她老在我窗台上蹲着，还朝我摇尾巴。",
+  )),
+);
 
 console.log("\n──────────────── 第 2 轮后的账本（合并去重后） ────────────────");
 console.log(JSON.stringify(ledger.load(), null, 2).slice(0, 1200));

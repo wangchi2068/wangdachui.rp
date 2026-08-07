@@ -28,8 +28,8 @@ if (!cfg.apiKey) {
 }
 
 // system prompt：角色卡 + 激活世界书 + 空账本快照
-const card = parseCard(JSON.parse(readFileSync(resolve(root, "assets/cards/libai.json"), "utf8")))!;
-const lore = activateLore(card.characterBook ?? [], "蜀道 青莲剑 魔教 雾岭");
+const card = parseCard(JSON.parse(readFileSync(resolve(root, "assets/cards/xiuxian.json"), "utf8")))!;
+const lore = activateLore(card.characterBook ?? [], "便利店 王总 妖狐 玉佩");
 const systemText = buildSystemPrompt({ card, lore, extraRules: "回应不超过 120 字。" });
 
 console.log(`【上下文预算】${cfg.contextBudgetChars} 字符 ≈ ${charsToTokens(cfg.contextBudgetChars)} token`);
@@ -42,19 +42,20 @@ const harness = new Harness(client, registry, cfg);
 const ctx = new ContextManager(client, cfg);
 
 const plot = [
-  "我们沿蜀道而行，迎面撞上山贼头目赵铁柱带人拦路。李白拔剑，三招将他的刀震飞。赵铁柱跪地求饶，说魔教在雾岭深处有一条密道，直通长安皇城。",
-  "夜宿山脚客栈，掌柜王婆偷偷塞给你一张纸条，上面写着：雾岭密道入口在一棵千年老槐树下。李白抚着青莲剑说，这剑靠近雾岭时微微发热，像是认得那条路。",
-  "次日你们找到那棵老槐树，树下果然有块活动的青石板。掀开一看，一条幽深的石阶通向地下，壁上刻着莲花纹——与青莲剑上的纹路一模一样。",
+  "我深夜加班到十一点，刚被王总叫去办公室骂了一顿，说我绩效垫底、再不努力就滚蛋。回出租屋的路上，我在垃圾堆旁边捡到一枚温润的玉佩，里面传来一个苍老的声音：小子，你印堂发黑，但灵根居然不错——捡到本座，算你走了八辈子运。",
+  "第二天上班，公司楼下新开了一家灵气便利店，24 小时亮着幽蓝的灯。老板娘是个看不清脸的女人，递给我一杯符水美式，说：加班的人，喝这个，续命。玄一在我识海里冷笑：这妖气，比你的工资还浓。",
+  "夜里我加班到崩溃，玉佩忽然发热。玄一说：外面那只妖狐蹲你窗台半天了，再不走本座就替你收了她。我拉开窗，一只雪白的狐狸叼着一份外卖盒蹲在窗沿，盒子上印着妖狐同城，下面还有一行小字：新用户首单免配送费，支持功德点支付。",
 ];
 
 for (let i = 0; i < plot.length; i++) {
+  const input = plot[i] ?? "";
   console.log(`\n──────── 回合 ${i + 1} ────────`);
-  const visible = ctx.visibleMessages(systemText, plot[i]);
+  const visible = ctx.visibleMessages(systemText, input);
   const before = estimateChars(visible);
   console.log(`可见上下文 ${before} 字符（${charsToTokens(before)} token），窗口内回合 ${ctx.windowSize}`);
   const result = await harness.runTurn(visible, { onNarrativeDelta: (d) => process.stdout.write(d) });
   console.log();
-  const prune = await ctx.endTurn({ systemText, userInput: plot[i], added: result.added });
+  const prune = await ctx.endTurn({ systemText, userInput: input, added: result.added });
   const after = ctx.visibleChars(systemText);
   console.log(
     `压缩 ${prune.compressedTurns} 个旧回合，归档 ${prune.archivedChars} 字符 | 压缩后可见 ${after} 字符 | 窗口 ${ctx.windowSize}/${ctx.totalTurns}`,
@@ -65,15 +66,15 @@ for (let i = 0; i < plot.length; i++) {
 console.log("\n════════ 最终前情提要 ════════");
 console.log(ctx.summaryText || "（无——窗口未溢出）");
 
-console.log("\n════════ 归档检索：关键词「密道」 ════════");
-const hits = ctx.archiveSearch("密道");
+console.log("\n════════ 归档检索：关键词「妖狐」 ════════");
+const hits = ctx.archiveSearch("妖狐");
 if (!hits.length) console.log("（无命中）");
 for (const h of hits) console.log(`[${h.id}] ${h.userInput.slice(0, 60)}...`);
 
 console.log("\n════════ 完整性校验 ════════");
 const checks: [string, boolean][] = [
-  ["前情提要保留专有名词", /赵铁柱|王婆|青莲剑/.test(ctx.summaryText)],
-  ["档案可检索到密道线索", hits.length > 0],
+  ["前情提要保留专有名词", /王总|老板娘|妖狐|符水/.test(ctx.summaryText)],
+  ["档案可检索到妖狐线索", hits.length > 0],
   ["窗口未超预算(80%)", ctx.visibleChars(systemText) <= Math.floor(cfg.contextBudgetChars * 0.8)],
 ];
 let failed = 0;

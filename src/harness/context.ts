@@ -120,6 +120,7 @@ export class ContextManager {
     if (this.summary) msgs.push({ role: "system", content: `【前情提要】\n${this.summary}` });
     for (let i = this.compressedUpTo; i < this.turns.length; i++) {
       const t = this.turns[i];
+      if (!t) continue;
       if (t.userInput) msgs.push({ role: "user", content: t.userInput });
       msgs.push(...t.messages);
     }
@@ -132,6 +133,7 @@ export class ContextManager {
     if (this.summary) n += this.summary.length;
     for (let i = this.compressedUpTo; i < this.turns.length; i++) {
       const t = this.turns[i];
+      if (!t) continue;
       n += t.userInput.length + estimateChars(t.messages);
     }
     return n;
@@ -164,6 +166,7 @@ export class ContextManager {
     while (this.compressedUpTo < this.turns.length && guard++ < 30) {
       if (this.estimateVisible(opts.systemText) <= available) break;
       const turn = this.turns[this.compressedUpTo];
+      if (!turn) break;
       this.summary = await this.mergeSummary(turn);
       mkdirSync(this.dir, { recursive: true });
       appendFileSync(
@@ -198,7 +201,14 @@ export class ContextManager {
       ],
       { temperature: 0.3, maxTokens: 900 },
     );
-    return res.content.trim() || this.summary;
+    const merged = res.content.trim();
+    // 健壮性：输出为空或异常过短（相比旧摘要），保留旧摘要并降级（真相仍在归档里）
+    const tooShort = merged.length < 20 || (this.summary.length > 0 && merged.length < this.summary.length * 0.5);
+    if (tooShort) {
+      console.warn(`〔压缩〕摘要输出异常（${merged.length} 字），保留旧摘要`);
+      return this.summary;
+    }
+    return merged;
   }
 
   /** 在归档原文里检索（"压缩后仍可召回"的落点） */

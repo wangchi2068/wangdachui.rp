@@ -31,8 +31,8 @@ if (!cfg.apiKey) {
   process.exit(1);
 }
 
-const card = parseCard(JSON.parse(readFileSync(resolve(process.cwd(), "assets/cards/libai.json"), "utf8")))!;
-const lore = activateLore(card.characterBook ?? [], "魔教 雾岭 月儿");
+const card = parseCard(JSON.parse(readFileSync(resolve(process.cwd(), "assets/cards/xiuxian.json"), "utf8")))!;
+const lore = activateLore(card.characterBook ?? [], "王总 便利店 妖狐");
 const systemText = buildSystemPrompt({
   card,
   lore,
@@ -55,19 +55,19 @@ async function askUser(card: DecisionCard): Promise<string> {
   console.log("└────────────────────────────────────");
   if (choiceOverride !== null) {
     const pick = choiceOverride;
-    if (pick === 0) return "（自由输入）向雾岭进发，但沿途留下记号，以防不测";
+    if (pick === 0) return "（自由输入）去，但我先发消息让小九在饭馆后巷待命，再带上玄一进去，见势不对就掀桌";
     return `${card.options[pick - 1] ?? card.options[0]}`;
   }
   const rl = createInterface({ input: stdin, output: stdout });
   const answer = (await rl.question("你的选择（输入编号或直接写走向）：")).trim();
   rl.close();
   const n = Number(answer);
-  if (Number.isInteger(n) && n >= 1 && n <= card.options.length) return card.options[n - 1];
-  return answer || card.options[0];
+  if (Number.isInteger(n) && n >= 1 && n <= card.options.length) return card.options[n - 1] ?? "";
+  return answer || (card.options[0] ?? "");
 }
 
 const userInput =
-  "我们站在岔路口：左路平坦，通往长安；右路荆棘丛生，通向雾岭——魔教圣女月儿就在那里。李白，直觉告诉我，你这次入蜀，就是为了找她。这趟去了，可能就回不了头了。你，怎么选？";
+  "王总今晚破天荒约我单独吃饭，说要给我升职加薪。可玄一刚才传音说：王总身上那股腥气，跟便利店老板娘身上的味道一模一样。这顿饭，我到底是去，还是不去？——去了，可能就回不了头了。";
 
 console.log("【用户】", userInput);
 console.log("【可用工具】", registry.names().join(", "));

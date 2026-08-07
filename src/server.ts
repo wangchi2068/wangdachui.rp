@@ -50,7 +50,7 @@ function loadDefaultCard(): CharacterCard | null {
       /* 损坏则回退示例卡 */
     }
   }
-  const example = resolve(root, "assets/cards/libai.json");
+  const example = resolve(root, "assets/cards/xiuxian.json");
   if (existsSync(example)) {
     try {
       return parseCard(JSON.parse(readFileSync(example, "utf8")));
@@ -175,9 +175,9 @@ function frameParser(socket: Socket, onText: (s: string) => void, onClose: () =>
   socket.on("data", (chunk: Buffer) => {
     buffer = Buffer.concat([buffer, chunk]);
     while (buffer.length >= 2) {
-      const b0 = buffer[0];
+      const b0 = buffer.readUInt8(0);
       const opcode = b0 & 0x0f;
-      const b1 = buffer[1];
+      const b1 = buffer.readUInt8(1);
       const masked = (b1 & 0x80) !== 0;
       let len = b1 & 0x7f;
       let offset = 2;
@@ -200,7 +200,10 @@ function frameParser(socket: Socket, onText: (s: string) => void, onClose: () =>
       const payload = Buffer.from(buffer.subarray(offset, offset + len));
       buffer = buffer.subarray(offset + len);
       if (maskKey) {
-        for (let i = 0; i < payload.length; i++) payload[i] ^= maskKey[i & 3];
+        for (let i = 0; i < payload.length; i++) {
+          const byte = payload[i] ?? 0;
+          payload[i] = byte ^ (maskKey[i & 3] ?? 0);
+        }
       }
       if (opcode === 0x8) {
         socket.end();

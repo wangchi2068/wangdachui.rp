@@ -13,7 +13,7 @@ import { parseLorebook, activateLore, buildLoreText } from "../src/roleplay/lore
 import { buildSystemPrompt } from "../src/roleplay/assemble.ts";
 
 const root = process.cwd();
-const cardJson = JSON.parse(readFileSync(resolve(root, "assets/cards/libai.json"), "utf8"));
+const cardJson = JSON.parse(readFileSync(resolve(root, "assets/cards/xiuxian.json"), "utf8"));
 const card = parseCard(cardJson);
 if (!card) {
   console.error("角色卡解析失败");
@@ -25,7 +25,7 @@ console.log(`  first_mes: ${card.firstMes.slice(0, 50)}...`);
 console.log(`  mes_example: ${card.mesExample.split("<START>").length - 1} 段示例`);
 
 // 独立世界书
-const loreJson = JSON.parse(readFileSync(resolve(root, "assets/lorebooks/jianghu.json"), "utf8"));
+const loreJson = JSON.parse(readFileSync(resolve(root, "assets/lorebooks/dushi.json"), "utf8"));
 const loreEntries = parseLorebook(loreJson);
 console.log(`\n【独立世界书】${loreEntries.length} 条`);
 
@@ -43,7 +43,7 @@ console.log(`  无关上下文 → 激活 ${activeNone.length} 条（应只有�
 const system = buildSystemPrompt({
   card,
   lore: active,
-  ledgerSnapshot: "- [人物] 李白（剑客，持青莲剑）\n- [人物] 月儿（魔教圣女，下落不明）\n- [伏笔] 月儿留信物紫玉兰，或有旧日渊源",
+  ledgerSnapshot: "- [人物] 小林（打工人，刚觉醒灵根）\n- [人物] 玄一（剑仙残魂，寄居古玉）\n- [伏笔] 便利店老板娘身上有妖气，与王总同源",
   extraRules: "回应不超过 200 字。",
 });
 console.log("\n【组装后的 system prompt】");
@@ -53,10 +53,10 @@ console.log("=".repeat(60));
 
 // 校验断言
 const checks: [string, boolean][] = [
-  ["包含角色名", system.includes("李白")],
+  ["包含角色名", system.includes("玄一")],
   ["包含人物设定", system.includes("【人物设定】")],
   ["包含世界书常驻", active.some((e) => e.constant)],
-  ["关键词激活了青莲剑", active.some((e) => e.content.includes("青莲剑"))],
+  ["关键词激活了便利店设定", active.some((e) => e.content.includes("便利店"))],
   ["无关上下文不激活关键词条目", activeNone.every((e) => e.constant)],
 ];
 let failed = 0;
