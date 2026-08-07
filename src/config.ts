@@ -9,6 +9,8 @@ export interface Config {
   contextBudgetChars: number;
   /** agent 循环最大迭代轮数，防死循环 */
   maxLoopTurns: number;
+  /** 运行期数据目录（账本/存档等，纯 JSON） */
+  stateDir: string;
 }
 
 /** 极简 .env 加载器（不覆盖已存在的环境变量） */
@@ -34,5 +36,6 @@ export function loadConfig(): Config {
     model: process.env.LIYUAN_MODEL ?? "deepseek-v4-flash-0731",
     contextBudgetChars: Number(process.env.LIYUAN_CONTEXT_BUDGET_CHARS ?? 24000),
     maxLoopTurns: Number(process.env.LIYUAN_MAX_LOOP_TURNS ?? 10),
+    stateDir: resolve(process.cwd(), "state"),
   };
 }
