@@ -123,6 +123,90 @@ function loadDefaultCard(): CharacterCard | null {
   return null;
 }
 
+/* ─────────── 对话导出（md / Word 兼容 HTML）─────────── */
+
+interface HistoryTurn {
+  id?: string;
+  at?: string;
+  userInput?: string;
+  messages?: { role: string; content?: string | null; tool_calls?: { function?: { name?: string; arguments?: string } }[] }[];
+}
+
+/** 读取 state/history.jsonl → 结构化回合数组 */
+function loadHistoryTurns(): HistoryTurn[] {
+  const f = resolve(cfg.stateDir, "history.jsonl");
+  if (!existsSync(f)) return [];
+  const turns: HistoryTurn[] = [];
+  for (const line of readFileSync(f, "utf8").split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      turns.push(JSON.parse(line) as HistoryTurn);
+    } catch {
+      /* 跳过损坏行 */
+    }
+  }
+  return turns;
+}
+
+/** 组装 Markdown 对话记录（标题 + 逐回合：用户 → 剧情正文 + 工具缩进） */
+function buildExportMarkdown(): string {
+  const cardName = card?.name ?? "（未导入角色卡）";
+  const lines: string[] = [
+    `# RP-Harness 对话记录`,
+    ``,
+    `> 角色：${cardName}`,
+    `> 导出时间：${new Date().toLocaleString("zh-CN")}`,
+    `> 主线：${director.summary().title}`,
+    ``,
+    `---`,
+    ``,
+  ];
+  for (const t of loadHistoryTurns()) {
+    if (t.userInput && t.userInput.trim()) {
+      lines.push(`## 🧑 玩家：${t.userInput.trim()}`, ``);
+    }
+    for (const m of t.messages ?? []) {
+      if (m.role === "assistant" && m.content) {
+        lines.push(m.content.trim(), ``);
+      } else if (m.role === "assistant" && m.tool_calls?.length) {
+        for (const tc of m.tool_calls) {
+          const name = tc.function?.name ?? "工具";
+          let args = "";
+          try {
+            args = JSON.stringify(JSON.parse(tc.function?.arguments ?? "{}"), null, 1) ?? "";
+          } catch {
+            args = tc.function?.arguments ?? "";
+          }
+          lines.push(`<details><summary>⚙ ${name}</summary>\n\n\`\`\`json\n${args}\n\`\`\`\n</details>`, ``);
+        }
+      } else if (m.role === "tool" && m.content) {
+        lines.push(`> 🔧 ${String(m.content).slice(0, 200).replace(/\n+/g, " ")}`, ``);
+      }
+    }
+    lines.push(`---`, ``);
+  }
+  return lines.join("\n");
+}
+
+/** Word 兼容 HTML（.doc 扩展，Word/ WPS 可直接打开）：内容与 md 一致，加最小排版 */
+function buildExportWordHtml(md: string): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const body = md
+    .split(/\n{2,}/)
+    .map((block) => {
+      const b = block.trim();
+      if (!b) return "";
+      if (b.startsWith("# ")) return `<h1>${esc(b.slice(2))}</h1>`;
+      if (b.startsWith("## ")) return `<h2>${esc(b.slice(3))}</h2>`;
+      if (b.startsWith("> ")) return `<blockquote>${esc(b.slice(2))}</blockquote>`;
+      if (b === "---") return `<hr>`;
+      if (b.startsWith("<details>")) return `<p style="color:#666;font-size:12px;">${esc(b).slice(0, 300)}</p>`;
+      return `<p style="white-space:pre-wrap;line-height:1.7;">${esc(b)}</p>`;
+    })
+    .join("\n");
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>RP-Harness 对话记录</title></head><body style="font-family:'Microsoft YaHei',sans-serif;max-width:760px;margin:24px auto;color:#222;">${body}</body></html>`;
+}
+
 function buildSystem(): string {
   if (!card) return "（尚未导入角色卡）";
   const lore = activateLoreHybrid(allLoreEntries(), lastContext, 8, 4);
@@ -198,6 +282,24 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/state") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(collectState()));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/export") {
+      const fmt = url.searchParams.get("fmt") === "doc" ? "doc" : "md";
+      const md = buildExportMarkdown();
+      if (fmt === "md") {
+        res.writeHead(200, {
+          "Content-Type": "text/markdown; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="rp-dialog.md"',
+        });
+        res.end(md);
+      } else {
+        res.writeHead(200, {
+          "Content-Type": "application/msword; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="rp-dialog.doc"',
+        });
+        res.end(buildExportWordHtml(md));
+      }
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/card") {

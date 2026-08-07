@@ -71,6 +71,13 @@
       <span class="chip" id="chipModel">模型：—</span>
       <span class="chip" id="chipState">窗口 —/—</span>
       <button id="newBtn" title="清空当前对话，重新开场" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:8px;padding:4px 12px;cursor:pointer;font-size:12px;">＋ 新建对话</button>
+      <div style="position:relative;" id="exportWrap">
+        <button id="exportBtn" title="导出本次对话" style="background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:8px;padding:4px 12px;cursor:pointer;font-size:12px;">⬇ 导出</button>
+        <div id="exportMenu" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;">
+          <button data-fmt="md" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;">📄 Markdown (.md)</button>
+          <button data-fmt="doc" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;">📝 Word (.doc)</button>
+        </div>
+      </div>
     </header>
     <div id="messages">
       <div class="empty-tip" id="emptyTip">
@@ -445,6 +452,30 @@ for (const btn of document.querySelectorAll("#quickCmd button")) {
 
 els.uploadBtn.onclick = () => els.cardFile.click();
 $("snapBtn").onclick = saveSnapshot;
+
+// 导出菜单：点击下载 md/doc
+const exportBtn = $("exportBtn");
+const exportMenu = $("exportMenu");
+exportBtn.onclick = (e) => { e.stopPropagation(); exportMenu.style.display = exportMenu.style.display === "none" ? "block" : "none"; };
+document.addEventListener("click", () => { exportMenu.style.display = "none"; });
+for (const b of exportMenu.querySelectorAll("button")) {
+  b.onclick = async () => {
+    const fmt = b.dataset.fmt || "md";
+    exportMenu.style.display = "none";
+    try {
+      const res = await fetch(`/api/export?fmt=${fmt}`);
+      if (!res.ok) { alert("导出失败"); return; }
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = fmt === "md" ? "rp-dialog.md" : "rp-dialog.doc";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch { alert("导出失败"); }
+  };
+}
 $("newBtn").onclick = () => {
   if (!confirm("新建对话？当前剧情、账本与主线进度将被清空（角色卡保留）。建议先存档。")) return;
   wsSend({ type: "command", text: "/new" });
