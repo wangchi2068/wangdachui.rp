@@ -18,3 +18,6 @@ state.backup-*/
 server.err.log
 .vercel
 .env*
+
+state_backup*
+server.out.log
