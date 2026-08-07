@@ -222,10 +222,12 @@ export class LlmClient {
           ),
         ]);
       } catch (e) {
-        // 空闲超时（服务端停止推流）：清理流后，有内容按已有内容返回，无内容抛错
+        // 空闲超时（服务端停止推流）：清理流。有内容按已有内容返回；
+        // 无内容则返回空结果（不抛错，避免进入 request 的 provider 重试风暴——
+        // 超时重试同一请求往往同样超时，白白放大等待）。调用方拿到空结果自然结束回合。
         reader.cancel().catch(() => {});
         if (content || reasoning || toolCalls.length) break;
-        throw e;
+        return { content: "", reasoning, toolCalls: [], finishReason: "", usage: undefined };
       }
       const { done, value } = readResult;
       if (done) break;
