@@ -1,37 +1,28 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { ToolRegistry } from "./registry.ts";
+import { loadLedger, saveLedger, mergeLedger, snapshotText, type LedgerSection } from "../harness/memory-ledger.ts";
 
 export interface ToolEnv {
   stateDir: string;
 }
 
 /**
- * 内置工具（任务 2 占位版）。
- * ledger_read / ledger_write 先提供可运行的简单实现，任务 3 换成
- * 旁侧模型自动记账 + 结构化合并。
+ * 内置工具（真实实现）：
+ * - ledger_read：读当前账本（快照文本），开场/关键决策前用；
+ * - ledger_write：agent 主动记录事实（旁侧模型记账之外的显式写入口）。
+ * 多写者共用 mergeLedger，按 key 去重合并。
  */
 export function registerBuiltinTools(registry: ToolRegistry, env: ToolEnv): void {
-  const ledgerPath = resolve(env.stateDir, "ledger.json");
-  const readLedger = (): string => {
-    try {
-      return readFileSync(ledgerPath, "utf8");
-    } catch {
-      return "{}";
-    }
-  };
-
   registry.register({
     name: "ledger_read",
-    description: "读取当前世界状态账本（结构化 JSON：人物、物品、关系、时间线、伏笔）。开场或关键决策前先读账本再动笔。",
+    description: "读取当前世界状态账本（人物/物品/关系/伏笔的结构化快照）。开场与关键决策前先读账本再动笔。",
     parameters: { type: "object", properties: {}, additionalProperties: false },
-    execute: async () => readLedger(),
+    execute: async () => snapshotText(loadLedger(env.stateDir)),
   });
 
   registry.register({
     name: "ledger_write",
     description:
-      "向世界状态账本写入条目。分区：characters(人物状态)/items(物品)/relations(关系)/plots(伏笔与剧情线)/notes(备注)。写入会追加记录。",
+      "向世界状态账本写入条目。分区：characters(人物)/items(物品)/relations(关系)/plots(伏笔)/notes(备注)。条目带 key 字段则同名覆盖，否则追加。",
     parameters: {
       type: "object",
       properties: {
@@ -40,25 +31,19 @@ export function registerBuiltinTools(registry: ToolRegistry, env: ToolEnv): void
           enum: ["characters", "items", "relations", "plots", "notes"],
           description: "账本分区",
         },
-        entry: { type: "object", description: "要写入的条目对象" },
+        entry: { type: "object", description: "条目对象，建议带 key 字段用于去重" },
       },
       required: ["section", "entry"],
       additionalProperties: false,
     },
     execute: async (args) => {
-      const section = String(args.section ?? "notes");
+      const section = String(args.section ?? "notes") as LedgerSection;
       const entry = (args.entry ?? {}) as Record<string, unknown>;
-      mkdirSync(env.stateDir, { recursive: true });
-      let ledger: Record<string, unknown[]> = {};
-      try {
-        ledger = JSON.parse(readLedger());
-      } catch {
-        ledger = {};
-      }
-      if (!Array.isArray(ledger[section])) ledger[section] = [];
-      ledger[section].push({ at: new Date().toISOString(), ...entry });
-      writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2), "utf8");
-      return `已写入 ${section}，该分区现有 ${ledger[section].length} 条记录`;
+      if (!entry.key) entry.key = JSON.stringify(entry).slice(0, 60);
+      const ledger = loadLedger(env.stateDir);
+      const merged = mergeLedger(ledger, { [section]: [entry] } as Record<string, unknown>);
+      saveLedger(env.stateDir, merged);
+      return `已写入 ${section} 分区，该分区现有 ${merged[section].length} 条`;
     },
   });
 }
