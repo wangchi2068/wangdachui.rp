@@ -109,6 +109,10 @@ export class ContextManager {
   get totalTurns(): number {
     return this.turns.length;
   }
+  /** 全部回合（UI 初始化渲染用） */
+  get allTurns(): StoredTurn[] {
+    return this.turns;
+  }
 
   /** 组装模型可见消息：system → 前情提要 → 滑动窗口 → 当前用户输入 */
   visibleMessages(systemText: string, userInput: string): ChatMessage[] {
@@ -116,7 +120,7 @@ export class ContextManager {
     if (this.summary) msgs.push({ role: "system", content: `【前情提要】\n${this.summary}` });
     for (let i = this.compressedUpTo; i < this.turns.length; i++) {
       const t = this.turns[i];
-      msgs.push({ role: "user", content: t.userInput });
+      if (t.userInput) msgs.push({ role: "user", content: t.userInput });
       msgs.push(...t.messages);
     }
     msgs.push({ role: "user", content: userInput });

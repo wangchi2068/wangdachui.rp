@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RP-Harness · 角色扮演 Agent</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #161a23; --panel2: #1d2330; --border: #2a3142;
+    --text: #e6e9f0; --dim: #8b93a7; --accent: #7c9cff; --user: #3b4256;
+    --assistant: #1d2330; --ok: #4ade80; --err: #f87171; --card: #2c2a3e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: "PingFang SC","Microsoft YaHei",system-ui,sans-serif; height: 100vh; overflow: hidden; }
+  #app { display: flex; height: 100vh; }
+  main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  header { padding: 10px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; }
+  header .title { font-weight: 700; letter-spacing: 1px; }
+  header .chip { font-size: 12px; color: var(--dim); background: var(--panel); border: 1px solid var(--border); padding: 2px 10px; border-radius: 999px; }
+  #messages { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 78%; padding: 10px 14px; border-radius: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: var(--user); border-bottom-right-radius: 4px; }
+  .msg.assistant { align-self: flex-start; background: var(--assistant); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg .meta { font-size: 11px; color: var(--dim); margin-bottom: 4px; }
+  .tools { align-self: flex-start; font-size: 12px; color: var(--dim); display: flex; gap: 6px; flex-wrap: wrap; }
+  .tools span { background: var(--panel2); border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px; }
+  .tools .ok { color: var(--ok); } .tools .err { color: var(--err); }
+  .card-box { align-self: center; width: 92%; max-width: 560px; background: var(--card); border: 1px solid #4a4766; border-radius: 14px; padding: 16px; }
+  .card-box .q { font-weight: 700; margin-bottom: 4px; }
+  .card-box .r { font-size: 13px; color: var(--dim); margin-bottom: 10px; }
+  .card-box .opt { display: block; width: 100%; text-align: left; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 9px 12px; border-radius: 8px; margin-top: 8px; cursor: pointer; font-size: 14px; }
+  .card-box .opt:hover { border-color: var(--accent); }
+  .card-box input[type=text] { width: 100%; margin-top: 8px; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 8px; }
+  .warn { align-self: center; color: #fbbf24; font-size: 13px; }
+  .composer { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border); }
+  #input { flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 11px 14px; font-size: 14px; resize: none; outline: none; }
+  #input:focus { border-color: var(--accent); }
+  #send { background: var(--accent); border: none; color: #0b0d12; font-weight: 700; border-radius: 10px; padding: 0 22px; cursor: pointer; }
+  #send:disabled { opacity: .5; cursor: not-allowed; }
+  aside { width: 320px; border-left: 1px solid var(--border); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; background: var(--panel); }
+  .sec { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .sec h3 { font-size: 13px; color: var(--dim); margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .sec ul { list-style: none; font-size: 13px; line-height: 1.6; }
+  .sec li { border-bottom: 1px dashed var(--border); padding: 4px 0; }
+  .sec li:last-child { border-bottom: none; }
+  .sec .label { color: var(--accent); margin-right: 6px; }
+  #uploadBtn { width: 100%; background: var(--panel2); border: 1px dashed var(--border); color: var(--dim); padding: 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  #uploadBtn:hover { border-color: var(--accent); color: var(--text); }
+  .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; color: var(--dim); }
+  .stat-row b { color: var(--text); font-weight: 600; }
+  #summary { font-size: 12px; color: var(--dim); line-height: 1.6; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="app">
+  <main>
+    <header>
+      <span class="title">✦ RP-Harness</span>
+      <span class="chip" id="chipCard">角色：—</span>
+      <span class="chip" id="chipModel">模型：—</span>
+      <span class="chip" id="chipState">窗口 —/—</span>
+    </header>
+    <div id="messages"></div>
+    <div class="composer">
+      <textarea id="input" rows="2" placeholder="对角色说话…（/助手 之类命令暂不支持）"></textarea>
+      <button id="send">发送</button>
+    </div>
+  </main>
+  <aside>
+    <div class="sec">
+      <h3>角色卡</h3>
+      <input type="file" id="cardFile" accept=".json" hidden>
+      <button id="uploadBtn">⬆ 上传角色卡（SillyTavern JSON）</button>
+    </div>
+    <div class="sec">
+      <h3>上下文统计</h3>
+      <div class="stat-row"><span>预算</span><b id="stBudget">—</b></div>
+      <div class="stat-row"><span>窗口 / 总回合</span><b id="stWindow">—</b></div>
+      <div class="stat-row"><span>本回合工具</span><b id="stTools">—</b></div>
+    </div>
+    <div class="sec">
+      <h3>前情提要（压缩摘要）</h3>
+      <div id="summary">（暂无）</div>
+    </div>
+    <div class="sec">
+      <h3>世界状态账本</h3>
+      <div id="ledger"><span style="color:var(--dim);font-size:13px">（账本为空）</span></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const els = { messages: $("messages"), input: $("input"), send: $("send"), cardFile: $("cardFile"), uploadBtn: $("uploadBtn") };
+const LEDGER_LABEL = { characters: "人物", items: "物品", relations: "关系", plots: "伏笔", notes: "备注" };
+let busy = false;
+let cardEl = null; // 正在等待选择的决策卡 DOM
+
+function addMsg(role, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.textContent = role === "user" ? "你" : "剧情";
+  div.appendChild(meta);
+  const body = document.createElement("div");
+  body.textContent = text;
+  div.appendChild(body);
+  els.messages.appendChild(div);
+  scrollDown();
+  return body;
+}
+function scrollDown() { els.messages.scrollTop = els.messages.scrollHeight; }
+
+function addTools(tools) {
+  if (!tools || !tools.length) return;
+  const row = document.createElement("div");
+  row.className = "tools";
+  for (const t of tools) {
+    const s = document.createElement("span");
+    s.className = t.ok ? "ok" : "err";
+    s.textContent = `⚙ ${t.name} ${t.ok ? "✓" : "✗"}`;
+    s.title = t.args + "\n→ " + t.output;
+    row.appendChild(s);
+  }
+  els.messages.appendChild(row);
+  scrollDown();
+}
+
+function renderCard(card) {
+  const box = document.createElement("div");
+  box.className = "card-box";
+  const q = document.createElement("div"); q.className = "q"; q.textContent = "✦ 决策卡：" + card.question;
+  box.appendChild(q);
+  if (card.reason) { const r = document.createElement("div"); r.className = "r"; r.textContent = card.reason; box.appendChild(r); }
+  card.options.forEach((opt, i) => {
+    const b = document.createElement("button");
+    b.className = "opt";
+    b.textContent = `${i + 1}. ${opt}`;
+    b.onclick = () => { sendChoice(opt); box.remove(); };
+    box.appendChild(b);
+  });
+  if (card.allowFreeInput) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "或输入你自己的走向…（回车确认）";
+    input.onkeydown = (e) => { if (e.key === "Enter" && input.value.trim()) { sendChoice(input.value.trim()); box.remove(); } };
+    box.appendChild(input);
+  }
+  els.messages.appendChild(box);
+  cardEl = box;
+  scrollDown();
+}
+function sendChoice(text) { wsSend({ type: "choice", text }); }
+
+function renderLedger(ledger) {
+  const box = $("ledger");
+  box.innerHTML = "";
+  let any = false;
+  for (const [sec, label] of Object.entries(LEDGER_LABEL)) {
+    const items = ledger[sec] || [];
+    if (!items.length) continue;
+    any = true;
+    const h = document.createElement("h3");
+    h.style.cssText = "font-size:13px;color:var(--dim);margin:8px 0 4px;";
+    h.textContent = label + "（" + items.length + "）";
+    box.appendChild(h);
+    const ul = document.createElement("ul");
+    for (const it of items.slice(-8).reverse()) {
+      const li = document.createElement("li");
+      const { key, ...rest } = it;
+      const desc = Object.entries(rest).filter(([, v]) => v !== null && v !== undefined && v !== "").map(([k, v]) => `${k}：${typeof v === "object" ? JSON.stringify(v) : v}`).join("，");
+      li.innerHTML = `<span class="label">${key || "•"}</span>${esc(desc || "(空)")}`;
+      ul.appendChild(li);
+    }
+    box.appendChild(ul);
+  }
+  if (!any) box.innerHTML = '<span style="color:var(--dim);font-size:13px">（账本为空）</span>';
+}
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+function renderState(st) {
+  $("chipCard").textContent = "角色：" + (st.cardName || "—");
+  $("chipModel").textContent = "模型：" + st.model;
+  $("chipState").textContent = `窗口 ${st.windowTurns}/${st.totalTurns}`;
+  $("stBudget").textContent = Math.round(st.budgetChars / 1000) + "k 字符";
+  $("stWindow").textContent = `${st.windowTurns} / ${st.totalTurns}`;
+  $("summary").textContent = st.summary || "（暂无）";
+  renderLedger(st.ledger);
+}
+
+/* ─────────── WebSocket ─────────── */
+let ws = null;
+function wsSend(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+
+function connect() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.onopen = () => { $("chipState").textContent = "已连接"; };
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === "init") renderState(msg.state);
+    if (msg.type === "delta") {
+      let body = els.messages.querySelector(".msg.assistant:last-of-type .body");
+      if (!body) { body = addMsg("assistant", ""); body.className = "body"; }
+      body.textContent += msg.text;
+      scrollDown();
+    }
+    if (msg.type === "turn_done") {
+      busy = false; els.send.disabled = false; els.input.disabled = false;
+      addTools(msg.stats.tools);
+      if (msg.stats.decisions && msg.stats.decisions.length) {
+        $("stTools").textContent = "决策卡 ×" + msg.stats.decisions.length;
+      } else {
+        $("stTools").textContent = msg.stats.tools.length ? `工具 ${msg.stats.tools.length} 次` : "无";
+      }
+    }
+    if (msg.type === "card") renderCard(msg.card);
+    if (msg.type === "state") renderState(msg.state);
+    if (msg.type === "warn") { const w = document.createElement("div"); w.className = "warn"; w.textContent = msg.message; els.messages.appendChild(w); scrollDown(); }
+    if (msg.type === "error") {
+      busy = false; els.send.disabled = false; els.input.disabled = false;
+      const w = document.createElement("div"); w.className = "warn"; w.textContent = "⚠ " + msg.message; els.messages.appendChild(w); scrollDown();
+    }
+  };
+  ws.onclose = () => { setTimeout(connect, 1500); };
+}
+
+async function sendChat() {
+  const text = els.input.value.trim();
+  if (!text || busy) return;
+  busy = true; els.send.disabled = true; els.input.disabled = true;
+  els.input.value = "";
+  addMsg("user", text);
+  wsSend({ type: "chat", text });
+}
+
+els.send.onclick = sendChat;
+els.input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+
+els.uploadBtn.onclick = () => els.cardFile.click();
+els.cardFile.onchange = async () => {
+  const f = els.cardFile.files[0];
+  if (!f) return;
+  const body = await f.text();
+  const res = await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || "导入失败"); return; }
+  els.messages.innerHTML = "";
+  if (data.firstMes) addMsg("assistant", data.firstMes);
+  const st = await (await fetch("/api/state")).json();
+  renderState(st);
+  $("chipCard").textContent = "角色：" + data.name;
+};
+connect();
+</script>
+</body>
+</html>
