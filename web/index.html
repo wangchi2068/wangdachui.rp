@@ -59,6 +59,7 @@
       <span class="chip" id="chipCard">角色：—</span>
       <span class="chip" id="chipModel">模型：—</span>
       <span class="chip" id="chipState">窗口 —/—</span>
+      <button id="newBtn" title="清空当前对话，重新开场" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:8px;padding:4px 12px;cursor:pointer;font-size:12px;">＋ 新建对话</button>
     </header>
     <div id="messages"></div>
     <div class="composer">
@@ -384,6 +385,10 @@ els.input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shift
 
 els.uploadBtn.onclick = () => els.cardFile.click();
 $("snapBtn").onclick = saveSnapshot;
+$("newBtn").onclick = () => {
+  if (!confirm("新建对话？当前剧情、账本与主线进度将被清空（角色卡保留）。建议先存档。")) return;
+  wsSend({ type: "command", text: "/new" });
+};
 els.cardFile.onchange = async () => {
   const f = els.cardFile.files[0];
   if (!f) return;

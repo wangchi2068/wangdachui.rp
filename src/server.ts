@@ -7,7 +7,7 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { createHash } from "node:crypto";
 import type { Socket } from "node:net";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
 import { LlmClient, type ChatMessage } from "./llm/client.ts";
@@ -44,13 +44,26 @@ let ctx = new ContextManager(client, cfg);
 let director = new Director(cfg.stateDir);
 let lastContext = "";
 
-/** 把当前生效角色卡持久化，保证世界线快照总能捕获到卡 */
+/** 把当前生效角色卡持久化（仅在上传/回档后调用；默认卡以 assets 为兜底，不落盘） */
 function persistCurrentCard(): void {
   if (!card) return;
   mkdirSync(cfg.stateDir, { recursive: true });
   writeFileSync(resolve(cfg.stateDir, "card.json"), JSON.stringify(card), "utf8");
 }
-persistCurrentCard();
+
+/** 全新对话/换卡：清空对话记忆、主线、账本与决策留痕（角色卡与世界书保留） */
+function resetWorld(): void {
+  ctx.reset();
+  director.reset();
+  lastContext = "";
+  for (const f of ["ledger.json", "decisions.jsonl"]) {
+    try {
+      rmSync(resolve(cfg.stateDir, f), { force: true });
+    } catch {
+      /* 文件不存在则跳过 */
+    }
+  }
+}
 
 function loadDefaultCard(): CharacterCard | null {
   const saved = resolve(root, "state/card.json");
@@ -160,9 +173,7 @@ const server = createServer(async (req, res) => {
       card = parsed;
       mkdirSync(cfg.stateDir, { recursive: true });
       writeFileSync(resolve(cfg.stateDir, "card.json"), JSON.stringify(parsed), "utf8");
-      ctx = new ContextManager(client, cfg); // 换卡 = 新会话
-      director.reset();
-      lastContext = "";
+      resetWorld(); // 换卡 = 新世界
       if (card.firstMes) {
         await ctx.endTurn({
           systemText: buildSystem(),
@@ -329,6 +340,11 @@ function frameParser(socket: Socket, onText: (s: string) => void, onClose: () =>
 }
 
 server.on("upgrade", (req: IncomingMessage, socket: Socket) => {
+  // 客户端异常断开（ECONNRESET 等）绝不能崩进程：所有 socket 一律兜底 error
+  socket.on("error", (err) => {
+    connections.delete(socket);
+    pendingDecision = null;
+  });
   const key = req.headers["sec-websocket-key"];
   if (req.url !== "/ws" || typeof key !== "string") {
     socket.destroy();
@@ -381,6 +397,12 @@ server.on("upgrade", (req: IncomingMessage, socket: Socket) => {
     connections.delete(socket);
     pendingDecision = null;
   });
+});
+
+// http 层的兜底：升级/请求中途断连也不崩进程
+server.on("clientError", (_err, socket) => {
+  if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+  else socket.destroy();
 });
 
 /** 斜杠命令：/help /state /snap /back /new /lore /phase */
@@ -438,10 +460,16 @@ async function handleCommand(conn: Connection, text: string): Promise<void> {
         break;
       }
       case "/new": {
-        ctx = new ContextManager(client, cfg);
-        director.reset();
-        lastContext = "";
-        notice("已开新会话（角色卡保留），历史与账本已清空");
+        resetWorld();
+        // 新对话重新播放角色开场白
+        if (card?.firstMes) {
+          await ctx.endTurn({
+            systemText: buildSystem(),
+            userInput: "",
+            added: [{ role: "assistant", content: card.firstMes }],
+          });
+        }
+        notice("已开新对话（角色卡保留），历史/账本/主线已清空");
         conn.send({ type: "reload" });
         break;
       }

@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ChatMessage, LlmClient } from "../llm/client.ts";
 import type { Config } from "../config.ts";
@@ -97,6 +97,21 @@ export class ContextManager {
       JSON.stringify({ summary: this.summary, compressedUpTo: this.compressedUpTo, turns: this.turns.length }, null, 2),
       "utf8",
     );
+  }
+
+  /** 全新对话：清空内存与磁盘上的历史/摘要/归档（保留目录） */
+  reset(): void {
+    this.turns = [];
+    this.summary = "";
+    this.compressedUpTo = 0;
+    for (const f of ["context.json", "history.jsonl", "archive.jsonl"]) {
+      try {
+        rmSync(resolve(this.dir, f), { force: true });
+      } catch {
+        /* 文件不存在则跳过 */
+      }
+    }
+    this.persist();
   }
 
   get summaryText(): string {
