@@ -28,7 +28,7 @@ if (!cfg.apiKey) {
 }
 
 // system prompt：角色卡 + 激活世界书 + 空账本快照
-const card = parseCard(JSON.parse(readFileSync(resolve(root, "assets/cards/xiuxian.json"), "utf8")))!;
+const card = parseCard(JSON.parse(readFileSync(resolve(root, "assets/cards/libai.json"), "utf8")))!;
 const lore = activateLore(card.characterBook ?? [], "便利店 王总 妖狐 玉佩");
 const systemText = buildSystemPrompt({ card, lore, extraRules: "回应不超过 120 字。" });
 

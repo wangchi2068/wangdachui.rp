@@ -50,6 +50,6 @@ export function loadConfig(): Config {
     maxLoopTurns: Number(process.env.WANGDACHUI_MAX_LOOP_TURNS ?? 10),
     stateDir: stateMode === "tmp" ? resolve("/tmp", "wangdachui-state") : resolve(process.cwd(), "state"),
     autoSnapshotEvery: Number(process.env.WANGDACHUI_AUTO_SNAPSHOT_EVERY ?? 5),
-    campaign: process.env.WANGDACHUI_CAMPAIGN || undefined,
+    campaign: process.env.WANGDACHUI_CAMPAIGN || "lotm", // 默认诡秘之主·廷根篇战役
   };
 }

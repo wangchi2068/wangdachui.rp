@@ -13,7 +13,7 @@ import { parseLorebook, activateLore, buildLoreText } from "../src/roleplay/lore
 import { buildSystemPrompt } from "../src/roleplay/assemble.ts";
 
 const root = process.cwd();
-const cardJson = JSON.parse(readFileSync(resolve(root, "assets/cards/xiuxian.json"), "utf8"));
+const cardJson = JSON.parse(readFileSync(resolve(root, "assets/cards/libai.json"), "utf8"));
 const card = parseCard(cardJson);
 if (!card) {
   console.error("角色卡解析失败");
@@ -25,7 +25,7 @@ console.log(`  first_mes: ${card.firstMes.slice(0, 50)}...`);
 console.log(`  mes_example: ${card.mesExample.split("<START>").length - 1} 段示例`);
 
 // 独立世界书
-const loreJson = JSON.parse(readFileSync(resolve(root, "assets/lorebooks/dushi.json"), "utf8"));
+const loreJson = JSON.parse(readFileSync(resolve(root, "assets/lorebooks/jianghu.json"), "utf8"));
 const loreEntries = parseLorebook(loreJson);
 console.log(`\n【独立世界书】${loreEntries.length} 条`);
 

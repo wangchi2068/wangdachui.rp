@@ -114,7 +114,7 @@ function loadDefaultCard(): CharacterCard | null {
       /* 损坏则回退示例卡 */
     }
   }
-  const example = resolve(root, "assets/cards/xiuxian.json");
+  const example = resolve(root, "assets/cards/libai.json");
   if (existsSync(example)) {
     try {
       return parseCard(JSON.parse(readFileSync(example, "utf8")));

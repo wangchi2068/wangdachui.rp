@@ -31,7 +31,7 @@ if (!cfg.apiKey) {
   process.exit(1);
 }
 
-const card = parseCard(JSON.parse(readFileSync(resolve(process.cwd(), "assets/cards/xiuxian.json"), "utf8")))!;
+const card = parseCard(JSON.parse(readFileSync(resolve(process.cwd(), "assets/cards/libai.json"), "utf8")))!;
 const lore = activateLore(card.characterBook ?? [], "王总 便利店 妖狐");
 const systemText = buildSystemPrompt({
   card,

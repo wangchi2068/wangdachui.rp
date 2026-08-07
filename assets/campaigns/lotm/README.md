@@ -14,7 +14,7 @@ $env:WANGDACHUI_CAMPAIGN="lotm"; npm run web
 # Git Bash
 WANGDACHUI_CAMPAIGN=lotm npm run web
 
-# 不设置 = 默认都市修仙（玄一线）
+# 不设置 = 默认诡秘之主（lotm 已是默认战役）
 npm run web
 ```
 
