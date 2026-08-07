@@ -12,3 +12,6 @@ Thumbs.db
 server.log
 server.pid
 *.png
+
+# 手工备份
+state.backup-*/
