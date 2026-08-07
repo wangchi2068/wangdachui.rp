@@ -348,8 +348,18 @@ function wsSend(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj
 
 let interrupted = false;
 let reconnectFailures = 0;
+/** 会话 ID：localStorage 持久化（每个浏览器一个稳定 ID），服务端按它隔离游戏状态 */
+function getSid() {
+  let sid = localStorage.getItem("wd_sid");
+  if (!sid) {
+    sid = "s_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem("wd_sid", sid);
+  }
+  return sid;
+}
 function connect() {
-  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  const proto = location.protocol === "https:" ? "wss://" : "ws://";
+  ws = new WebSocket(proto + location.host + "/ws?sid=" + encodeURIComponent(getSid()));
   ws.onopen = () => {
     $("chipState").textContent = "已连接";
     if (interrupted) {

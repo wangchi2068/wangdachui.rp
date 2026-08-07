@@ -52,10 +52,10 @@ export class ContextManager {
   private compressedUpTo = 0;
   private dir: string;
 
-  constructor(client: LlmClient, cfg: Config) {
+  constructor(client: LlmClient, cfg: Config, stateDir?: string) {
     this.client = client;
     this.cfg = cfg;
-    this.dir = cfg.stateDir;
+    this.dir = stateDir ?? cfg.stateDir;
     this.load();
   }
 
