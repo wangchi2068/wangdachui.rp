@@ -21,7 +21,8 @@ import { createSnapshot, deleteSnapshot, listSnapshots, restoreSnapshot } from "
 import { Director } from "./director/director.ts";
 import { parseCard, type CharacterCard } from "./roleplay/character-card.ts";
 import { parsePngCard } from "./roleplay/png-card.ts";
-import { activateLore, parseLorebook, type LorebookEntry } from "./roleplay/lorebook.ts";
+import { activateLoreHybrid, parseLorebook, type LorebookEntry } from "./roleplay/lorebook.ts";
+import { VectorIndex } from "./roleplay/vector.ts";
 import { buildSystemPrompt } from "./roleplay/assemble.ts";
 
 const PORT = Number(process.env.LIYUAN_PORT ?? 7620);
@@ -88,10 +89,11 @@ function loadDefaultCard(): CharacterCard | null {
 
 function buildSystem(): string {
   if (!card) return "（尚未导入角色卡）";
+  const lore = activateLoreHybrid(allLoreEntries(), lastContext, 8, 4);
   const blocks = [
     buildSystemPrompt({
       card,
-      lore: activateLore(allLoreEntries(), lastContext),
+      lore: lore.entries,
       ledgerSnapshot: snapshotText(ledgerService.load()),
       extraRules: "用第一人称扮演角色，保持人设；遇到重大剧情转折时用 decide 工具把候选方向做成卡片询问用户，不要滥用。",
     }),
@@ -475,14 +477,24 @@ async function handleCommand(conn: Connection, text: string): Promise<void> {
       }
       case "/lore": {
         const all = allLoreEntries();
-        const hits = all.filter(
+        const kwHits = all.filter(
           (e) => e.enabled && (!arg || e.content.includes(arg) || e.keys.some((k) => k.includes(arg.toLowerCase()))),
         );
-        if (!hits.length) {
-          notice(`世界书未命中「${arg}」`);
-          break;
+        // 无关键词命中时用向量语义检索补充展示（带来源标注）
+        if (kwHits.length) {
+          notice("世界书命中：\n" + kwHits.slice(0, 6).map((e) => `- ${e.content.slice(0, 100)}`).join("\n"));
+        } else {
+          const idx = new VectorIndex(all.filter((e) => e.enabled).map((e) => `${e.keys.join(" ")} ${e.content}`));
+          const hits = idx.query(arg ?? "", 4);
+          if (!hits.length) {
+            notice(`世界书未命中「${arg}”`);
+            break;
+          }
+          notice("世界书语义相关：\n" + hits.map((h) => {
+            const e = all[h.index];
+            return `- [${(h.score * 100).toFixed(0)}%] ${e ? e.content.slice(0, 100) : ""}`;
+          }).join("\n"));
         }
-        notice("世界书命中：\n" + hits.slice(0, 6).map((e) => `- ${e.content.slice(0, 100)}`).join("\n"));
         break;
       }
       case "/phase": {
