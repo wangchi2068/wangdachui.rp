@@ -61,6 +61,44 @@
   .stat-row b { color: var(--text); font-weight: 600; }
   #summary { font-size: 12px; color: var(--dim); line-height: 1.6; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
 
+  /* ===== 掷骰卡（BG3 式玩家投掷） ===== */
+  .roll-box { align-self: center; width: 92%; max-width: 420px; background: var(--card); border: 1px solid #4a4766; border-radius: 14px; padding: 18px; text-align: center; }
+  .roll-box .rq { font-weight: 700; font-size: 16px; margin-bottom: 2px; }
+  .roll-box .rr { font-size: 13px; color: var(--dim); margin-bottom: 12px; }
+  .roll-math { font-size: 14px; color: var(--dim); margin-bottom: 14px; letter-spacing: .5px; }
+  .roll-math b { color: var(--text); }
+  /* 骰子本体 */
+  .dice { width: 72px; height: 72px; margin: 0 auto 14px; position: relative; }
+  .dice .face {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 34px; font-weight: 800; color: #fff; border-radius: 14px;
+    background: linear-gradient(145deg, #4a4f68, #2c3148); border: 2px solid #5a6080;
+    box-shadow: 0 6px 18px rgba(0,0,0,.4); user-select: none;
+  }
+  .dice.rolling .face { animation: diceRoll .9s cubic-bezier(.3,.7,.4,1) infinite; }
+  @keyframes diceRoll {
+    0% { transform: rotate(0deg) scale(1); }
+    25% { transform: rotate(90deg) scale(1.12); }
+    50% { transform: rotate(180deg) scale(.95); }
+    75% { transform: rotate(270deg) scale(1.1); }
+    100% { transform: rotate(360deg) scale(1); }
+  }
+  .dice .face.big { font-size: 44px; }
+  .dice .face.good { background: linear-gradient(145deg, #2f6b4a, #1d4a33); border-color: #4ade80; }
+  .dice .face.bad { background: linear-gradient(145deg, #7a3030, #4a1d1d); border-color: #f87171; }
+  /* 结果行 */
+  .roll-result { font-size: 15px; font-weight: 600; margin-top: 6px; min-height: 24px; }
+  .roll-result .succ { color: var(--ok); }
+  .roll-result .fail { color: var(--err); }
+  /* 投掷按钮 */
+  #rollBtn {
+    margin-top: 14px; background: var(--accent); border: none; color: #0b0d12;
+    font-weight: 700; border-radius: 10px; padding: 12px 32px; cursor: pointer; font-size: 15px;
+    min-height: 46px; width: 100%; max-width: 240px; transition: opacity .15s;
+  }
+  #rollBtn:disabled { opacity: .5; cursor: not-allowed; }
+  .roll-note { font-size: 12px; color: var(--dim); margin-top: 8px; }
+
   /* ===== 移动端适配（诡秘之主 / 裂界 共用） ===== */
   @media (max-width: 768px) {
     body { height: 100dvh; overflow: hidden; }
@@ -79,6 +117,11 @@
     .card-box { width: 100%; max-width: 100%; padding: 14px 12px; }
     .card-box .opt { padding: 12px 14px; font-size: 15px; margin-top: 10px; border-radius: 10px; }
     .card-box input[type=text] { padding: 11px 14px; font-size: 15px; }
+    .roll-box { width: 100%; max-width: 100%; padding: 16px 14px; }
+    .dice { width: 62px; height: 62px; }
+    .dice .face { font-size: 28px; }
+    .dice .face.big { font-size: 38px; }
+    #rollBtn { max-width: 100%; min-height: 48px; }
     .warn { font-size: 13px; }
     /* 输入区：触控友好 */
     .composer { padding: 8px 10px 10px; gap: 6px; }
@@ -299,6 +342,65 @@ function clearCard() {
   if (h) h.remove();
 }
 
+/* ===== BG3 式玩家掷骰 ===== */
+let rollEl = null; // 当前掷骰卡 DOM
+let rollResolve = null; // 收到结果的回调（骰子动画结束后触发）
+
+function renderRollCard(card) {
+  const box = document.createElement("div");
+  box.className = "roll-box";
+  const modStr = card.mod >= 0 ? "+" + card.mod : String(card.mod);
+  box.innerHTML =
+    `<div class="rq">🎲 检定 · ${card.label}</div>` +
+    `<div class="rr">行动成败在此一掷</div>` +
+    `<div class="roll-math">D20 <b>${modStr}</b> vs <b>DC${card.dc}</b></div>` +
+    `<div class="dice"><div class="face">?</div></div>` +
+    `<div class="roll-result"></div>` +
+    `<button id="rollBtn">🎲 投掷 D20</button>` +
+    `<div class="roll-note">点击投掷，让骰子替你决定</div>`;
+  els.messages.appendChild(box);
+  rollEl = box;
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const btn = box.querySelector("#rollBtn");
+  btn.onclick = () => {
+    btn.disabled = true;
+    btn.textContent = "🎲 投掷中…";
+    const face = box.querySelector(".dice .face");
+    const dice = box.querySelector(".dice");
+    dice.classList.add("rolling");
+    face.textContent = "?";
+    // 滚动 1.2 秒后显示真随机结果（服务端结果到达时自动停动画显示）
+    wsSend({ type: "roll" });
+  };
+}
+
+// 服务端推送真随机结果：先缓存，动画结束后显示
+function onRollResult(result) {
+  if (!rollEl) return;
+  const face = rollEl.querySelector(".dice .face");
+  const dice = rollEl.querySelector(".dice");
+  const res = rollEl.querySelector(".roll-result");
+  const btn = rollEl.querySelector("#rollBtn");
+  // 停动画，显示点数
+  dice.classList.remove("rolling");
+  face.textContent = result.die;
+  face.classList.remove("big", "good", "bad");
+  if (result.die === 20) face.classList.add("big", "good");
+  else if (result.die === 1) face.classList.add("big", "bad");
+  else if (result.success) face.classList.add("good");
+  else face.classList.add("bad");
+  const modStr = result.mod >= 0 ? "+" + result.mod : String(result.mod);
+  res.innerHTML = `D20(${result.die})${modStr} = <b>${result.total}</b> vs DC${result.dc} → ` +
+    (result.success ? `<span class="succ">✓ 成功</span>` : `<span class="fail">✗ 失败</span>`);
+  btn.disabled = false;
+  btn.textContent = "✓ 结果已定，继续";
+  btn.onclick = () => { boxRemoved(rollEl); };
+}
+function boxRemoved(box) {
+  if (rollEl === box) rollEl = null;
+  box.remove();
+}
+
 function renderLedger(ledger) {
   const box = $("ledger");
   box.innerHTML = "";
@@ -459,6 +561,8 @@ function connect() {
       $("stTokens").textContent = msg.stats.estTokens ? `≈ ${msg.stats.estTokens} token` : "—";
     }
     if (msg.type === "card") renderCard(msg.card);
+    if (msg.type === "roll_card") renderRollCard(msg.card);
+    if (msg.type === "roll_result") onRollResult(msg.result);
     if (msg.type === "state") renderState(msg.state);
     if (msg.type === "notice") {
       const n = document.createElement("div");

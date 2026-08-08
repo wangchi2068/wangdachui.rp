@@ -8,6 +8,12 @@ import {
   type DecisionCard,
   type DecisionRecord,
 } from "./decision-card.ts";
+import {
+  ROLL_TOOL_NAME,
+  parseRollCard,
+  type RollCard,
+  type RollOutcome,
+} from "./roll-card.ts";
 
 export interface ToolExecution {
   name: string;
@@ -39,6 +45,8 @@ export interface HarnessOptions {
   onNarrativeDelta?: (delta: string) => void;
   /** 决策卡回调：模型调用 decide 时暂停循环，把卡片交给调用方（CLI/Web），返回用户的选择 */
   onDecisionRequested?: (card: DecisionCard) => Promise<string>;
+  /** 掷骰回调：模型调用 roll 时暂停循环，把检定卡交给调用方，返回玩家的真随机投掷结果 */
+  onRollRequested?: (card: RollCard) => Promise<RollOutcome>;
   /** 覆盖工具列表（测试注入用） */
   tools?: ToolDef[];
   temperature?: number;
@@ -131,6 +139,17 @@ export class Harness {
           } else {
             ok = false;
             output = "decide 参数解析失败：question 必须为非空字符串，options 必须为非空字符串数组。请重新构造调用。";
+          }
+        } else if (name === ROLL_TOOL_NAME) {
+          const rcard = parseRollCard(args);
+          if (rcard) {
+            const outcome = opts.onRollRequested
+              ? await opts.onRollRequested(rcard)
+              : { die: 10, total: 10 + rcard.mod, mod: rcard.mod, dc: rcard.dc, success: 10 + rcard.mod >= rcard.dc };
+            output = `玩家掷骰结果：D20(${outcome.die})${outcome.mod >= 0 ? `+${outcome.mod}` : outcome.mod} = ${outcome.total} vs DC${outcome.dc} → ${outcome.success ? "成功" : "失败"}。请严格按这个真随机结果书写剧情后果，不要擅自更改点数。`;
+          } else {
+            ok = false;
+            output = "roll 参数解析失败：label 必须为非空字符串，mod/dc 必须为数字。请重新构造调用。";
           }
         } else {
           const exec = await this.registry.run(name, args);

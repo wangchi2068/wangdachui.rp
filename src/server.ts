@@ -14,6 +14,7 @@ import { LlmClient, type ChatMessage } from "./llm/client.ts";
 import { ToolRegistry } from "./tools/registry.ts";
 import { registerBuiltinTools } from "./tools/builtin.ts";
 import { registerDecisionTool, type DecisionCard } from "./harness/decision-card.ts";
+import { registerRollTool, rollD20, type RollCard, type RollOutcome } from "./harness/roll-card.ts";
 import { Harness } from "./harness/harness.ts";
 import { LedgerService, snapshotText } from "./harness/memory-ledger.ts";
 import { ContextManager, estimateChars } from "./harness/context.ts";
@@ -94,6 +95,7 @@ function getSession(sid?: string | null): SessionState {
   };
   registerBuiltinTools(st.registry, { stateDir });
   registerDecisionTool(st.registry);
+  registerRollTool(st.registry);
   st.harness = new Harness(client, st.registry, cfg);
   st.card = loadDefaultCard(stateDir);
   sessions.set(key, st);
@@ -481,6 +483,10 @@ const connections = new Set<WebSocket>();
 type ConnDecision = { resolve: (choice: string) => void };
 const connDecisions = new WeakMap<WebSocket, ConnDecision>();
 
+/** 每个连接独立挂起掷骰（BG3 式玩家投掷） */
+type ConnRoll = { resolve: (outcome: RollOutcome) => void; card: RollCard };
+const connRolls = new WeakMap<WebSocket, ConnRoll>();
+
 const wss = new WebSocketServer({ server, path: "/ws" });
 
 wss.on("connection", (socket: WebSocket, req: IncomingMessage) => {
@@ -492,6 +498,7 @@ wss.on("connection", (socket: WebSocket, req: IncomingMessage) => {
   socket.on("error", () => {
     connections.delete(socket);
     connDecisions.delete(socket);
+    connRolls.delete(socket);
   });
   const conn: Connection = {
     socket,
@@ -509,13 +516,20 @@ wss.on("connection", (socket: WebSocket, req: IncomingMessage) => {
       return;
     }
     const pending = connDecisions.get(socket);
+    const pendingRoll = connRolls.get(socket);
     if (msg.type === "chat" && typeof msg.text === "string") {
+      // 掷骰挂起时，普通输入视为放弃掷骰（直接继续剧情，防卡死）
+      if (pendingRoll) {
+        connRolls.delete(socket);
+        pendingRoll.resolve({ die: 0, total: 0, mod: 0, dc: 0, success: false });
+        conn.send({ type: "warn", message: "已跳过掷骰（视为放弃）" });
+      }
       // 决策卡挂起时，普通输入视为自由选择（防止"没人点卡片 → 对话卡死"）
       if (pending) {
         connDecisions.delete(socket);
         pending.resolve(msg.text);
         conn.send({ type: "warn", message: "已把你的输入作为决策卡的自由选择：" + msg.text });
-      } else {
+      } else if (!pendingRoll) {
         void handleChat(conn, st, msg.text);
       }
     }
@@ -524,10 +538,18 @@ wss.on("connection", (socket: WebSocket, req: IncomingMessage) => {
       connDecisions.delete(socket);
       pending.resolve(msg.text);
     }
+    if (msg.type === "roll" && pendingRoll) {
+      // 玩家点投掷：服务端真随机并回填，同时把结果推给前端展示
+      connRolls.delete(socket);
+      const outcome = rollD20(pendingRoll.card);
+      pendingRoll.resolve(outcome);
+      conn.send({ type: "roll_result", result: outcome });
+    }
   });
   socket.on("close", () => {
     connections.delete(socket);
     connDecisions.delete(socket);
+    connRolls.delete(socket);
   });
 });
 
@@ -655,6 +677,11 @@ async function handleChat(conn: Connection, st: SessionState, text: string): Pro
         new Promise<string>((resolve) => {
           connDecisions.set(conn.socket, { resolve });
           conn.send({ type: "card", card: cardData });
+        }),
+      onRollRequested: (rcard: RollCard) =>
+        new Promise<RollOutcome>((resolve) => {
+          connRolls.set(conn.socket, { resolve, card: rcard });
+          conn.send({ type: "roll_card", card: rcard });
         }),
     });
     if (result.stoppedBy === "max-turns") conn.send({ type: "warn", message: "本轮达到工具循环上限，正文可能不完整，可重发或输入『继续』" });
