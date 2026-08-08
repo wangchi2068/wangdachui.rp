@@ -114,9 +114,15 @@ export class Director {
     if (phase.beats?.length) {
       lines.push(`【本幕节奏】${phase.beats.join(" → ")}`);
     }
-    if (this.consumePendingEvent() && phase.eventHint) {
-      lines.push(`【主线事件】${phase.eventHint}`);
+    if (phase.mustEvents?.length) {
+      lines.push(`【本幕必发生】${phase.mustEvents.join("；")}（按序推进，玩家选择可改细节但不改事件本身）`);
     }
+    // 事件钩子常驻：当前幕的主线事件每回合可见（模型以此为锚，不随自由发挥漂移）；
+    // 推进到新幕后自动换成新幕的钩子。
+    if (phase.eventHint) {
+      lines.push(`【主线事件·进行中】${phase.eventHint}`);
+    }
+    this.consumePendingEvent(); // 消费标志（兼容旧逻辑，钩子已常驻不再依赖一次性注入）
     return lines.join("\n");
   }
 

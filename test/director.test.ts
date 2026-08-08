@@ -18,13 +18,13 @@ test("导演：初始在第一幕·觉醒，directive 含当前目标", () => {
     const directive = d.buildDirective();
     assert.ok(directive.includes("第一幕"));
     assert.ok(directive.includes("当前目标"));
-    assert.ok(!directive.includes("主线事件")); // 初始无事件
+    assert.ok(directive.includes("主线事件"), "事件钩子常驻注入，第一幕也有钩子");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("导演：关键词命中 + 回合门槛达标才推进；事件钩子只注入一次", () => {
+test("导演：关键词命中 + 回合门槛达标才推进；事件钩子常驻注入", () => {
   const dir = freshDir();
   try {
     const d = new Director(dir);
@@ -34,11 +34,11 @@ test("导演：关键词命中 + 回合门槛达标才推进；事件钩子只�
     const r = d.advance("我走进了便利店，老板娘苏涟漪递给我一杯符水", 3);
     assert.equal(r.advanced, true);
     assert.equal(r.to?.id, "p2-meet");
-    // 事件钩子消费一次
+    // 事件钩子常驻：多次调用每次都出现（作为持续主线锚）
     const d1 = d.buildDirective();
     assert.ok(d1.includes("主线事件"));
     const d2 = d.buildDirective();
-    assert.ok(!d2.includes("主线事件"));
+    assert.ok(d2.includes("主线事件"), "事件钩子应常驻注入（当前幕每回合可见）");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

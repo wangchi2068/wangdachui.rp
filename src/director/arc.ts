@@ -24,6 +24,8 @@ export interface Phase {
   tension?: number;
   /** 本幕节奏要点（可选，如"开场给虚假安全感 → 中段揭露背叛 → 结尾逼玩家选择"） */
   beats?: string[];
+  /** 本幕必发生事件（原著锚点）：模型推进时须按序落实，防自创架空线 */
+  mustEvents?: string[];
 }
 
 export const MAIN_ARC: Phase[] = [
