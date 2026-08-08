@@ -26,6 +26,12 @@
   .tools { align-self: flex-start; font-size: 12px; color: var(--dim); display: flex; gap: 6px; flex-wrap: wrap; }
   .tools span { background: var(--panel2); border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px; }
   .tools .ok { color: var(--ok); } .tools .err { color: var(--err); }
+  .tools-detail {
+    flex-basis: 100%; background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.6;
+    white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow-y: auto;
+    font-family: Consolas, monospace; color: var(--dim);
+  }
   .card-box { align-self: center; width: 92%; max-width: 560px; background: var(--card); border: 1px solid #4a4766; border-radius: 14px; padding: 16px; }
   .card-box .q { font-weight: 700; margin-bottom: 4px; }
   .card-box .r { font-size: 13px; color: var(--dim); margin-bottom: 10px; }
@@ -115,6 +121,24 @@
   .dice .face.big { font-size: 44px; }
   .dice .face.good { background: linear-gradient(145deg, #2f6b4a, #1d4a33); border-color: #4ade80; }
   .dice .face.bad { background: linear-gradient(145deg, #7a3030, #4a1d1d); border-color: #f87171; }
+  /* 落地回弹 + 辉光 */
+  .dice .face.impact { animation: diceImpact .45s cubic-bezier(.2,1.4,.4,1); }
+  @keyframes diceImpact {
+    0% { transform: scale(1.3); box-shadow: 0 0 24px var(--accent); }
+    60% { transform: scale(.94); }
+    100% { transform: scale(1); }
+  }
+  .dice .face.good.impact { animation-name: diceImpactGood; }
+  .dice .face.bad.impact { animation-name: diceImpactBad; }
+  @keyframes diceImpactGood { 0% { transform: scale(1.35); box-shadow: 0 0 30px #4ade80; } 60% { transform: scale(.94); } 100% { transform: scale(1); } }
+  @keyframes diceImpactBad { 0% { transform: scale(1.35); box-shadow: 0 0 30px #f87171; } 60% { transform: scale(.94); } 100% { transform: scale(1); } }
+  /* crit 震屏 */
+  #messages.shake { animation: screenShake .3s ease; }
+  @keyframes screenShake {
+    0%,100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); } 40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); } 80% { transform: translateX(3px); }
+  }
   /* 结果行 */
   .roll-result { font-size: 15px; font-weight: 600; margin-top: 6px; min-height: 24px; }
   .roll-result .succ { color: var(--ok); }
@@ -207,6 +231,7 @@
         </div>
       </div>
     </header>
+    <div id="ctxBarWrap" style="height:3px;background:transparent;"><div id="ctxBar" style="height:100%;width:0%;background:var(--accent);transition:width .4s;"></div></div>
     <div id="messages">
       <div class="empty-tip" id="emptyTip">
         <div class="big">✦ 开始一段旅程</div>
@@ -294,6 +319,14 @@ function clearTyping() {
   const t = document.querySelector(".msg.typing");
   if (t) t.remove();
 }
+function resetSendBtn() {
+  busy = false; streamingBubble = null; clearTyping();
+  els.send.disabled = false; els.input.disabled = false;
+  els.send.classList.remove("busy");
+  els.send.textContent = "发送";
+  els.send.style.color = "";
+  els.send.style.border = "";
+}
 
 function addMsg(role, text) {
   const div = document.createElement("div");
@@ -349,8 +382,18 @@ function addTools(tools) {
   for (const t of tools) {
     const s = document.createElement("span");
     s.className = t.ok ? "ok" : "err";
-    s.textContent = `⚙ ${t.name} ${t.ok ? "✓" : "✗"}`;
-    s.title = t.args + "\n→ " + t.output;
+    s.textContent = (t.ok ? "⚙ " : "⚠ ⚙ ") + t.name + (t.ok ? " ✓" : " ✗");
+    s.style.cursor = "pointer";
+    s.title = "点击查看详情";
+    s.onclick = () => {
+      // 展开/收起该工具详情
+      const existing = s.nextElementSibling;
+      if (existing && existing.classList.contains("tools-detail")) { existing.remove(); return; }
+      const pre = document.createElement("pre");
+      pre.className = "tools-detail";
+      pre.textContent = `⚙ ${t.name}\n参数：${t.args || "(无)"}\n→ ${t.output || "(空)"}`;
+      s.insertAdjacentElement("afterend", pre);
+    };
     row.appendChild(s);
   }
   els.messages.appendChild(row);
@@ -363,12 +406,14 @@ function renderCard(card) {
   const q = document.createElement("div"); q.className = "q"; q.textContent = "✦ 决策卡：" + card.question;
   box.appendChild(q);
   if (card.reason) { const r = document.createElement("div"); r.className = "r"; r.textContent = card.reason; box.appendChild(r); }
+  const btns = [];
   card.options.forEach((opt, i) => {
     const b = document.createElement("button");
     b.className = "opt";
     b.textContent = `${i + 1}. ${opt}`;
     b.onclick = () => { sendChoice(opt); box.remove(); };
     box.appendChild(b);
+    btns.push(b);
   });
   if (card.allowFreeInput) {
     const input = document.createElement("input");
@@ -377,13 +422,28 @@ function renderCard(card) {
     input.onkeydown = (e) => { if (e.key === "Enter" && input.value.trim()) { sendChoice(input.value.trim()); box.remove(); } };
     box.appendChild(input);
   }
+  // 数字快捷键：1-9 直接选对应选项（BG3/CRPG 惯例）
+  box.tabIndex = 0;
+  box.addEventListener("keydown", (e) => {
+    const n = parseInt(e.key, 10);
+    if (n >= 1 && n <= btns.length) {
+      e.preventDefault();
+      btns[n - 1].click();
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const idx = btns.indexOf(document.activeElement);
+      const next = e.key === "ArrowDown" ? (idx + 1) % btns.length : (idx - 1 + btns.length) % btns.length;
+      btns[next].focus();
+    }
+  });
   els.messages.appendChild(box);
   cardEl = box;
   box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  box.focus();
   const hint = document.createElement("div");
   hint.className = "warn";
   hint.id = "cardHint";
-  hint.textContent = "✦ 剧情在等你拍板：在卡片上选择，或直接在输入框输入你的走向";
+  hint.textContent = "✦ 剧情在等你拍板：按 1-9 或点击选项，或直接在输入框输入你的走向";
   els.messages.appendChild(hint);
   scrollDown();
 }
@@ -425,26 +485,37 @@ function renderRollCard(card) {
     const dice = box.querySelector(".dice");
     dice.classList.add("rolling");
     face.textContent = "?";
-    // 滚动 1.2 秒后显示真随机结果（服务端结果到达时自动停动画显示）
+    // 骰子数字轮播（投掷感）+ 弹跳，收到结果时停轮播显真值
+    const spin = setInterval(() => { face.textContent = 1 + Math.floor(Math.random() * 20); }, 80);
+    box._rollSpin = spin;
     wsSend({ type: "roll" });
   };
 }
 
-// 服务端推送真随机结果：先缓存，动画结束后显示
+// 服务端推送真随机结果：停轮播、显示点数、落地辉光、crit 震屏
 function onRollResult(result) {
   if (!rollEl) return;
   const face = rollEl.querySelector(".dice .face");
   const dice = rollEl.querySelector(".dice");
   const res = rollEl.querySelector(".roll-result");
   const btn = rollEl.querySelector("#rollBtn");
-  // 停动画，显示点数
+  // 停轮播 + 停滚动动画
+  if (rollEl._rollSpin) { clearInterval(rollEl._rollSpin); rollEl._rollSpin = null; }
   dice.classList.remove("rolling");
   face.textContent = result.die;
-  face.classList.remove("big", "good", "bad");
+  face.classList.remove("big", "good", "bad", "impact");
   if (result.die === 20) face.classList.add("big", "good");
   else if (result.die === 1) face.classList.add("big", "bad");
   else if (result.success) face.classList.add("good");
   else face.classList.add("bad");
+  // 落地回弹 + 辉光（CSS impact）
+  void face.offsetWidth; // 强制重排以重播动画
+  face.classList.add("impact");
+  // 大成功/大失败震屏
+  if (result.die === 20 || result.die === 1) {
+    els.messages.classList.add("shake");
+    setTimeout(() => els.messages.classList.remove("shake"), 300);
+  }
   const modStr = result.mod >= 0 ? "+" + result.mod : String(result.mod);
   res.innerHTML = `D20(${result.die})${modStr} = <b>${result.total}</b> vs DC${result.dc} → ` +
     (result.success ? `<span class="succ">✓ 成功</span>` : `<span class="fail">✗ 失败</span>`);
@@ -490,6 +561,19 @@ function renderState(st) {
   $("stBudget").textContent = Math.round(st.budgetChars / 1000) + "k 字符";
   $("stWindow").textContent = `${st.windowTurns} / ${st.totalTurns}`;
   $("summary").textContent = st.summary || "（暂无）";
+  // 上下文预算进度条：三级颜色 + 超90% 提示一次
+  const ratio = st.totalTurns > 0 ? Math.min(1, (st.windowTurns || st.totalTurns) / st.totalTurns) : 0;
+  const bar = $("ctxBar");
+  if (bar) {
+    bar.style.width = Math.round(ratio * 100) + "%";
+    bar.style.background = ratio > 0.9 ? "var(--err)" : ratio > 0.7 ? "#fbbf24" : "var(--accent)";
+  }
+  if (ratio > 0.9 && !localStorage.getItem("ctxWarned")) {
+    localStorage.setItem("ctxWarned", "1");
+    const w = document.createElement("div"); w.className = "warn";
+    w.textContent = "⚠ 上下文接近上限，建议 /snap 存档后 /back 精简窗口";
+    els.messages.appendChild(w); scrollDown();
+  }
   renderLedger(st.ledger);
   renderMainline(st.mainline);
   renderRoster(st.ledger.characters || []);
@@ -608,9 +692,7 @@ function connect() {
       smartScroll();
     }
     if (msg.type === "turn_done") {
-      busy = false; streamingBubble = null; clearTyping(); els.send.disabled = false; els.input.disabled = false;
-      els.send.classList.remove("busy");
-      els.send.textContent = "发送";
+      resetSendBtn();
       addTools(msg.stats.tools);
       if (msg.stats.decisions && msg.stats.decisions.length) {
         $("stTools").textContent = "决策卡 ×" + msg.stats.decisions.length;
@@ -634,9 +716,7 @@ function connect() {
     if (msg.type === "reload") { location.reload(); }
     if (msg.type === "warn") { const w = document.createElement("div"); w.className = "warn"; w.textContent = msg.message; els.messages.appendChild(w); scrollDown(); }
     if (msg.type === "error") {
-      busy = false; streamingBubble = null; clearTyping(); els.send.disabled = false; els.input.disabled = false;
-      els.send.classList.remove("busy");
-      els.send.textContent = "发送";
+      resetSendBtn();
       const w = document.createElement("div"); w.className = "warn"; w.textContent = "⚠ " + msg.message; els.messages.appendChild(w); scrollDown();
     }
   };
@@ -661,6 +741,11 @@ function connect() {
 }
 
 async function sendChat() {
+  // busy 时按钮变“停止”：中断当前生成（关闭 WS 触发重连重置）
+  if (busy) {
+    stopGenerating();
+    return;
+  }
   const text = els.input.value.trim();
   if (!text) return;
   // 决策卡挂起时：普通输入当作自由选择（防止"没人点卡片 → 对话卡死"）
@@ -679,7 +764,10 @@ async function sendChat() {
   }
   busy = true; els.send.disabled = true;
   els.send.classList.add("busy");
-  els.send.textContent = "生成中";
+  els.send.textContent = "停止";
+  els.send.style.color = "var(--err)";
+  els.send.style.border = "1px solid var(--err)";
+  els.send.disabled = false;
   els.input.value = "";
   addMsg("user", text);
   // 打字指示器：AI 思考/生成期间显示三点跳动，首个 delta 到达时替换
@@ -690,6 +778,13 @@ async function sendChat() {
   hideEmptyTip();
   scrollDown();
   wsSend({ type: "chat", text });
+}
+
+/* 停止生成：关 WS 触发重连重置（服务端无 interrupt 时的降级） */
+function stopGenerating() {
+  try { ws.close(); } catch {}
+  resetSendBtn();
+  connect();
 }
 
 els.send.onclick = sendChat;
