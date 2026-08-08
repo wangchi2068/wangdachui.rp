@@ -398,6 +398,7 @@ const server = createServer(async (req, res) => {
       // 健康检查：进程活着 + 会话目录可写
       let diskOk = true;
       try {
+        mkdirSync(cfg.stateDir, { recursive: true });
         const probe = resolve(cfg.stateDir, ".healthz");
         writeFileSync(probe, String(Date.now()), "utf8");
         rmSync(probe, { force: true });
