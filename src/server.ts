@@ -75,6 +75,8 @@ interface SessionState {
   queue: Promise<void>;
   /** 最近访问时间（LRU 回收用） */
   lastAccess: number;
+  /** 世界书向量索引缓存（会话内复用，避免每回合重建） */
+  loreIndex: import("./roleplay/vector.ts").VectorIndex | null;
 }
 
 /** 默认会话（HTTP API / 无 sid 时用）：state 目录与全局同层 */
@@ -120,6 +122,7 @@ function getSession(sid?: string | null): SessionState {
     lastContext: "",
     queue: Promise.resolve(),
     lastAccess: Date.now(),
+    loreIndex: null,
   };
   registerBuiltinTools(st.registry, { stateDir });
   registerDecisionTool(st.registry);
@@ -291,7 +294,8 @@ function buildExportWordHtml(md: string): string {
 
 function buildSystem(st: SessionState): string {
   if (!st.card) return "（尚未导入角色卡）";
-  const lore = activateLoreHybrid(allLoreEntries(st), st.lastContext, 8, 4);
+  const lore = activateLoreHybrid(allLoreEntries(st), st.lastContext, 8, 4, st.loreIndex);
+  st.loreIndex = lore.index ?? st.loreIndex;
   const blocks = [
     buildSystemPrompt({
       card: st.card,
@@ -669,7 +673,8 @@ async function handleCommand(conn: Connection, st: SessionState, text: string): 
         if (kwHits.length) {
           notice("世界书命中：\n" + kwHits.slice(0, 6).map((e) => `- ${e.content.slice(0, 100)}`).join("\n"));
         } else {
-          const idx = new VectorIndex(all.filter((e) => e.enabled).map((e) => `${e.keys.join(" ")} ${e.content}`));
+          const idx = st.loreIndex ?? new VectorIndex(all.filter((e) => e.enabled).map((e) => `${e.keys.join(" ")} ${e.content}`));
+          st.loreIndex = idx;
           const hits = idx.query(arg ?? "", 4);
           if (!hits.length) {
             notice(`世界书未命中「${arg}”`);

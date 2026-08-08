@@ -78,7 +78,8 @@ export function activateLoreHybrid(
   contextText: string,
   max = 8,
   vectorBudget = 4,
-): { entries: LorebookEntry[]; rank: ("constant" | "keyword" | "vector")[] } {
+  cachedIndex?: VectorIndex | null,
+): { entries: LorebookEntry[]; rank: ("constant" | "keyword" | "vector")[]; index?: VectorIndex } {
   const enabled = entries.filter((e) => e.enabled);
   const constant = enabled.filter((e) => e.constant);
   const ctx = contextText.toLowerCase();
@@ -98,7 +99,7 @@ export function activateLoreHybrid(
   if (budget > 0) {
     const candidates = rest.filter((e) => !chosen.has(e));
     try {
-      const index = new VectorIndex(candidates.map((e) => `${e.keys.join(" ")} ${e.content}`));
+      const index = cachedIndex ?? new VectorIndex(candidates.map((e) => `${e.keys.join(" ")} ${e.content}`));
       for (const hit of index.query(contextText, Math.min(vectorBudget, budget))) {
         const e = candidates[hit.index];
         if (!e) continue;

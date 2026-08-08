@@ -211,18 +211,21 @@ export class LlmClient {
     const IDLE_TIMEOUT_MS = 45_000;
     while (true) {
       let readResult: Awaited<ReturnType<typeof reader.read>>;
+      // 计时器每次 race 后清理，防长流式积累空转 timer
+      let idleTimer: ReturnType<typeof setTimeout> | null = null;
       try {
         readResult = await Promise.race([
           reader.read(),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => {
+          new Promise<never>((_, reject) => {
+            idleTimer = setTimeout(() => {
               console.warn("[llm] 流式空闲超时：服务端 45s 未推流");
               reject(new Error("stream idle timeout"));
-            }, IDLE_TIMEOUT_MS),
-          ),
+            }, IDLE_TIMEOUT_MS);
+          }),
         ]);
+        if (idleTimer) clearTimeout(idleTimer);
       } catch (e) {
-        // 空闲超时（服务端停止推流）：清理流。有内容按已有内容返回；
+        if (idleTimer) clearTimeout(idleTimer);
         // 无内容则降级为非流式请求重试——非流式走 request 的 90s 超时 + provider 重试，
         // 能拿到完整回复（SSE 挂起多发生在长回复/长上下文，非流式通常稳定）。
         reader.cancel().catch(() => {}); // fire-and-forget：不阻塞降级（cancel 在 SSE 挂着时可能不返回）
