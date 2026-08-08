@@ -654,6 +654,40 @@ async function saveSnapshot() {
 let ws = null;
 function wsSend(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
 
+/* ===== HTTP 对话兜底（Vercel 无持久 WS 时自动切换） ===== */
+let httpMode = false;
+function setHttpMode(on) {
+  httpMode = on;
+  $("chipState").textContent = on ? "HTTP 模式" : "已连接";
+  if (on) {
+    const w = document.createElement("div");
+    w.className = "warn";
+    w.textContent = "⚠ 已切换 HTTP 模式：可正常对话，但决策卡/掷骰自动默认选择，打字机效果关闭";
+    els.messages.appendChild(w);
+    scrollDown();
+  }
+}
+/** HTTP 版发消息：返回 {ok, content} */
+async function httpSend(obj) {
+  try {
+    const r = await fetch("/api/chat?sid=" + encodeURIComponent(getSid()), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(obj),
+    });
+    const data = await r.json();
+    return data;
+  } catch { return { ok: false, error: "网络错误" }; }
+}
+/** HTTP 版刷新 state（轮询） */
+async function httpPollState() {
+  try {
+    const r = await fetch("/api/state?sid=" + encodeURIComponent(getSid()));
+    const st = await r.json();
+    renderState(st);
+    if (st.turns && st.turns.length) renderHistory(st.turns);
+  } catch {}
+}
+
 let interrupted = false;
 let reconnectFailures = 0;
 /** 会话 ID：localStorage 持久化（每个浏览器一个稳定 ID），服务端按它隔离游戏状态 */
@@ -722,18 +756,18 @@ function connect() {
   };
   ws.onerror = () => {
     reconnectFailures++;
-    if (reconnectFailures === 3) {
-      $("chipState").textContent = "展示模式";
-      const w = document.createElement("div");
-      w.className = "warn";
-      w.textContent = "⚠ 当前为线上展示模式：实时对话需要本地运行（npm run web）后才可用。页面布局/存档展示不受影响。";
-      els.messages.appendChild(w);
-      scrollDown();
+    if (reconnectFailures === 3 && !httpMode) {
+      setHttpMode(true);
+      // HTTP 模式开启后停止 WS 重连，改用 HTTP 轮询
+      try { ws.close(); } catch {}
+      httpPollState();
     }
   };
   ws.onclose = () => {
     if (busy) interrupted = true;
     busy = false; els.send.disabled = false; els.input.disabled = false;
+    // 已切 HTTP 模式：不再重连 WS
+    if (httpMode) return;
     // 连续失败 5 次后停止自动重连（Vercel 等无 WS 环境避免无限循环）
     if (reconnectFailures >= 5) return;
     setTimeout(connect, 1500);
@@ -759,7 +793,17 @@ async function sendChat() {
   // 斜杠命令：不占用剧情回合，只发命令
   if (text.startsWith("/")) {
     els.input.value = "";
-    wsSend({ type: "command", text });
+    if (httpMode) {
+      void (async () => {
+        const data = await httpSend({ type: "command", text });
+        if (data.content) {
+          const w = document.createElement("div"); w.className = "warn"; w.style.cssText = "white-space:pre-wrap;"; w.textContent = data.content; els.messages.appendChild(w); scrollDown();
+        }
+        httpPollState();
+      })();
+    } else {
+      wsSend({ type: "command", text });
+    }
     return;
   }
   busy = true; els.send.disabled = true;
@@ -777,6 +821,22 @@ async function sendChat() {
   els.messages.appendChild(typing);
   hideEmptyTip();
   scrollDown();
+  if (httpMode) {
+    // HTTP 模式：等待完整返回后一次性渲染
+    void (async () => {
+      const data = await httpSend({ type: "chat", text });
+      clearTyping();
+      if (data.ok) {
+        const body = addMsg("assistant", data.content || "（本轮无正文）");
+        body.style.animation = "none";
+      } else {
+        const w = document.createElement("div"); w.className = "warn"; w.textContent = "⚠ " + (data.error || "请求失败"); els.messages.appendChild(w);
+      }
+      resetSendBtn();
+      httpPollState();
+    })();
+    return;
+  }
   wsSend({ type: "chat", text });
 }
 
@@ -801,7 +861,8 @@ for (const btn of document.querySelectorAll("#quickCmd button")) {
       return;
     }
     if (busy) return;
-    wsSend({ type: "command", text: cmd });
+    if (httpMode) { void (async () => { const d = await httpSend({ type: "command", text: cmd }); if (d.content) { const w = document.createElement("div"); w.className = "warn"; w.style.cssText = "white-space:pre-wrap;"; w.textContent = d.content; els.messages.appendChild(w); scrollDown(); } httpPollState(); })(); }
+    else wsSend({ type: "command", text: cmd });
   };
 }
 
@@ -833,7 +894,8 @@ for (const b of exportMenu.querySelectorAll("button")) {
 }
 $("newBtn").onclick = () => {
   if (!confirm("新建对话？当前剧情、账本与主线进度将被清空（角色卡保留）。建议先存档。")) return;
-  wsSend({ type: "command", text: "/new" });
+  if (httpMode) { void (async () => { await httpSend({ type: "command", text: "/new" }); location.reload(); })(); }
+  else wsSend({ type: "command", text: "/new" });
 };
 els.cardFile.onchange = async () => {
   const f = els.cardFile.files[0];

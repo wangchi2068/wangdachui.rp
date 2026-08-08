@@ -409,6 +409,31 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: diskOk, uptime: process.uptime(), sessions: sessions.size }));
       return;
     }
+    if (req.method === "POST" && url.pathname === "/api/chat") {
+      // HTTP 对话兜底（Vercel 无持久 WS 时）：非流式，无决策卡/掷骰交互（自动默认选），返回完整正文 + state
+      const st = getSession(url.searchParams.get("sid"));
+      const body = (await readBodyLimited(req, 1024)) ?? "";
+      let text = "";
+      try { text = String(JSON.parse(body).text ?? "").slice(0, 500); } catch { text = ""; }
+      if (!text.trim()) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "缺少 text" }));
+        return;
+      }
+      // 斜杠命令走命令处理
+      if (text.startsWith("/")) {
+        let cmdOut = "";
+        const fakeConn: Connection = { socket: null as never, send: (obj) => { const o = obj as { type?: string; message?: string; text?: string }; if (o.type === "warn" || o.type === "notice" || o.type === "error") cmdOut += String(o.message ?? o.text ?? "") + "\n"; } };
+        await handleCommand(fakeConn, st, text);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, content: cmdOut.trim(), state: collectState(st) }));
+        return;
+      }
+      const content = await chatOnce(st, text);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, content, state: collectState(st) }));
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/state") {
       const st = getSession(url.searchParams.get("sid"));
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -738,6 +763,30 @@ async function handleCommand(conn: Connection, st: SessionState, text: string): 
   } catch (e) {
     notice(`命令失败：${(e as Error).message}`);
   }
+}
+
+/**
+ * HTTP 模式回合：非流式，无决策/掷骰交互（自动默认选），返回完整正文。
+ * Vercel 无持久 WS 时的对话兜底。
+ */
+async function chatOnce(st: SessionState, text: string): Promise<string> {
+  if (!st.card) throw new Error("请先导入角色卡");
+  st.lastContext = text;
+  logger.info("turn_start", { sid: st.sid, turns: st.ctx.totalTurns, mode: "http" });
+  const system = buildSystem(st);
+  const visible = st.ctx.visibleMessages(system, text);
+  const result = await st.harness.runTurn(visible, { stateDir: st.stateDir });
+  if (result.usageTotal > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (st.tokenUsage.day !== today) st.tokenUsage = { day: today, total: 0 };
+    st.tokenUsage.total += result.usageTotal;
+  }
+  const prune = await st.ctx.endTurn({ systemText: system, userInput: text, added: result.added });
+  if (prune.pending) void st.ctx.drainCompression(system).catch(() => {});
+  await st.ledger.updateAfterTurn({ characterName: st.card.name, userInput: text, narrative: result.content, turns: st.ctx.totalTurns });
+  st.lastContext = `${text}\n${result.content}`;
+  st.director.advance(`${st.lastContext}\n${snapshotText(st.ledger.load())}`, st.ctx.totalTurns);
+  return result.content || "（本轮无正文，换个说法试试）";
 }
 
 async function handleChat(conn: Connection, st: SessionState, text: string): Promise<void> {
