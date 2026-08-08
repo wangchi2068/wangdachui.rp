@@ -24,6 +24,7 @@ import type { Phase } from "./director/arc.ts";
 import { parseCard, type CharacterCard } from "./roleplay/character-card.ts";
 import { parsePngCard } from "./roleplay/png-card.ts";
 import { activateLoreHybrid, parseLorebook, type LorebookEntry } from "./roleplay/lorebook.ts";
+import { logger } from "./logger.ts";
 import { VectorIndex } from "./roleplay/vector.ts";
 import { buildSystemPrompt } from "./roleplay/assemble.ts";
 
@@ -370,6 +371,20 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(readFileSync(resolve(root, "web/index.html")));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/healthz") {
+      // 健康检查：进程活着 + 会话目录可写
+      let diskOk = true;
+      try {
+        const probe = resolve(cfg.stateDir, ".healthz");
+        writeFileSync(probe, String(Date.now()), "utf8");
+        rmSync(probe, { force: true });
+      } catch {
+        diskOk = false;
+      }
+      res.writeHead(diskOk ? 200 : 503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: diskOk, uptime: process.uptime(), sessions: sessions.size }));
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/state") {
@@ -719,6 +734,8 @@ async function handleChat(conn: Connection, st: SessionState, text: string): Pro
   }
   try {
     st.lastContext = text;
+    const t0 = Date.now();
+    logger.info("turn_start", { sid: st.sid, turns: st.ctx.totalTurns });
     const system = buildSystem(st);
     const visible = st.ctx.visibleMessages(system, text);
     const result = await st.harness.runTurn(visible, {
@@ -775,6 +792,7 @@ async function handleChat(conn: Connection, st: SessionState, text: string): Pro
       conn.send({ type: "warn", message: `💾 已自动存档（第 ${st.ctx.totalTurns} 回合）` });
     }
     conn.send({ type: "state", state: collectState(st), prune, ledgerUpdate: up });
+    logger.info("turn_done", { sid: st.sid, latencyMs: Date.now() - t0, modelCalls: result.modelCalls, usageTotal: result.usageTotal, turns: st.ctx.totalTurns });
   } catch (e) {
     conn.send({ type: "error", message: (e as Error).message });
   }
