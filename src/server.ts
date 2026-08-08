@@ -144,6 +144,8 @@ function collectState(st: SessionState) {
     cardName: st.card?.name ?? null,
     model: cfg.model,
     budgetChars: cfg.contextBudgetChars,
+    // 预算占用比例（0-1）：可见字符/预算，前端进度条与预警用
+    budgetUsed: Math.min(1, st.ctx.visibleChars("") / Math.max(1, cfg.contextBudgetChars)),
     ledger,
     summary: st.ctx.summaryText,
     windowTurns: st.ctx.windowSize,

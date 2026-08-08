@@ -562,8 +562,8 @@ function renderState(st) {
   $("stBudget").textContent = Math.round(st.budgetChars / 1000) + "k 字符";
   $("stWindow").textContent = `${st.windowTurns} / ${st.totalTurns}`;
   $("summary").textContent = st.summary || "（暂无）";
-  // 上下文预算进度条：三级颜色 + 超90% 提示一次
-  const ratio = st.totalTurns > 0 ? Math.min(1, (st.windowTurns || st.totalTurns) / st.totalTurns) : 0;
+  // 上下文预算进度条：用服务端算的预算占用（可见字符/预算），三级颜色 + 高占用提示一次
+  const ratio = typeof st.budgetUsed === "number" ? Math.min(1, st.budgetUsed) : 0;
   const bar = $("ctxBar");
   if (bar) {
     bar.style.width = Math.round(ratio * 100) + "%";
@@ -572,7 +572,7 @@ function renderState(st) {
   if (ratio > 0.9 && !localStorage.getItem("ctxWarned")) {
     localStorage.setItem("ctxWarned", "1");
     const w = document.createElement("div"); w.className = "warn";
-    w.textContent = "⚠ 上下文接近上限，建议 /snap 存档后 /back 精简窗口";
+    w.textContent = "⚠ 上下文使用率高（" + Math.round(ratio * 100) + "%），建议 /snap 存档后 /back 精简窗口";
     els.messages.appendChild(w); scrollDown();
   }
   renderLedger(st.ledger);
