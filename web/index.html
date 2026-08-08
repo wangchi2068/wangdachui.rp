@@ -321,6 +321,7 @@ function clearTyping() {
 }
 function resetSendBtn() {
   busy = false; streamingBubble = null; clearTyping();
+  if (wsTurnTimer) { clearTimeout(wsTurnTimer); wsTurnTimer = null; }
   els.send.disabled = false; els.input.disabled = false;
   els.send.classList.remove("busy");
   els.send.textContent = "发送";
@@ -656,6 +657,7 @@ function wsSend(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj
 
 /* ===== HTTP 对话兜底（Vercel 无持久 WS 时自动切换） ===== */
 let httpMode = false;
+let wsTurnTimer = null; // WS 回合超时检测
 function setHttpMode(on) {
   httpMode = on;
   $("chipState").textContent = on ? "HTTP 模式" : "已连接";
@@ -838,6 +840,19 @@ async function sendChat() {
     return;
   }
   wsSend({ type: "chat", text });
+  // WS 消息超时检测：90s 无响应（Vercel WS 数据不通）则切 HTTP 重发
+  if (wsTurnTimer) clearTimeout(wsTurnTimer);
+  wsTurnTimer = setTimeout(() => {
+    if (busy && !httpMode) {
+      console.warn("[ws] 回合 90s 无响应，切 HTTP 模式");
+      setHttpMode(true);
+      try { ws.close(); } catch {}
+      resetSendBtn();
+      // HTTP 重发同一句
+      els.input.value = text;
+      sendChat();
+    }
+  }, 90000);
 }
 
 /* 停止生成：关 WS 触发重连重置（服务端无 interrupt 时的降级） */
