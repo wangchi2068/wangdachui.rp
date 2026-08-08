@@ -310,6 +310,14 @@ function buildSystem(st: SessionState): string {
   ];
   const directive = st.director.buildDirective();
   if (directive) blocks.push(directive);
+  // 旧事重提：归档里与当前语境相关的旧细节重新浮现（压缩后不遗忘）
+  const recalled = st.ctx.recallFromArchive(st.lastContext || "", 2);
+  if (recalled.length) {
+    const recalledText = recalled
+      .map((t) => `· 第${t.id.replace("t", "")}回合：${t.userInput} → ${t.messages.filter((m) => m.role === "assistant").map((m) => String(m.content ?? "").slice(0, 60)).join(" ")}`)
+      .join("\n");
+    blocks.push(`【旧事重提】以下是与当前语境相关的过往剧情片段，若自然契合可呼应（勿生硬）：\n${recalledText}`);
+  }
   return blocks.join("\n\n");
 }
 

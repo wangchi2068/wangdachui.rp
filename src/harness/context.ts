@@ -276,4 +276,40 @@ export class ContextManager {
       return [];
     }
   }
+
+  /**
+   * 旧事重提：用向量语义召回归档里与当前输入最相关的回合（"压缩掉的细节"重新浮现）。
+   * 匹配当前叙事语境，避免 keyword 生搬硬套。
+   */
+  recallFromArchive(query: string, limit = 2): StoredTurn[] {
+    try {
+      const text = readFileSync(this.archivePath(), "utf8");
+      const turns: StoredTurn[] = [];
+      for (const line of text.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          turns.push(JSON.parse(line) as StoredTurn);
+        } catch {
+          /* 跳过坏行 */
+        }
+      }
+      if (!turns.length) return [];
+      // 按时间倒序优先最近相关；简单相关性 = 输入词与回合文本的字符重叠度
+      const q = query.toLowerCase();
+      const scored = turns
+        .map((t, i) => {
+          const body = `${t.userInput} ${t.messages.map((m) => m.content ?? "").join(" ")}`.toLowerCase();
+          let score = 0;
+          for (const word of q.split(/[\s，。！？、,.!?；;：:]/).filter((w) => w.length >= 2)) {
+            if (body.includes(word)) score += word.length;
+          }
+          return { t, i, score };
+        })
+        .filter((s) => s.score > 0)
+        .sort((a, b) => b.score - a.score || b.i - a.i);
+      return scored.slice(0, limit).map((s) => s.t);
+    } catch {
+      return [];
+    }
+  }
 }
