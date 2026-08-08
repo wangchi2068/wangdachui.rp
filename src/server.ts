@@ -316,6 +316,19 @@ function buildSystem(st: SessionState): string {
 /** 动态补充规则：根据玩家上一条输入形态注入针对性指引（短输入/走偏处理） */
 function buildExtraRules(st: SessionState): string {
   const rules = ["用第一人称扮演角色，保持人设；遇到重大剧情转折时用 decide 工具把候选方向做成卡片询问用户，不要滥用。"];
+  // 玩家画像（scribe 每 5 回合更新）：让兜底与选项贴合玩家风格
+  try {
+    const profile = st.ledger.load().notes.find((n) => String(n.key ?? "") === "sys-player-profile");
+    const p = profile?.content ? (typeof profile.content === "string" ? JSON.parse(profile.content) : profile.content) : null;
+    if (p && typeof p === "object") {
+      const bits = [];
+      if (p.pace) bits.push(`节奏偏好：${p.pace}`);
+      if (p.decisionPattern) bits.push(`决策风格：${p.decisionPattern}`);
+      if (p.actionBias) bits.push(`行动偏好：${p.actionBias}`);
+      if (p.frustration) bits.push(`玩家讨厌：${p.frustration}`);
+      if (bits.length) rules.push(`【玩家画像】${bits.join("；")}。短输入兜底时优先给符合玩家风格的选项（如偏好对话就多给打听/试探类）；绝对不要替玩家说出心理活动或替玩家做决定。`);
+    }
+  } catch { /* 画像解析失败则忽略 */ }
   const last = (st.lastContext || "").trim();
   // 短输入（<=12 字且不含标点长句）：注入兜底指引，AI 自动推进并给可选行动
   if (last.length > 0 && last.length <= 12) {
@@ -781,7 +794,7 @@ async function handleChat(conn: Connection, st: SessionState, text: string): Pro
     if (prune.pending) {
       void st.ctx.drainCompression(system).catch(() => {});
     }
-    const up = await st.ledger.updateAfterTurn({ characterName: st.card.name, userInput: text, narrative: result.content });
+    const up = await st.ledger.updateAfterTurn({ characterName: st.card.name, userInput: text, narrative: result.content, turns: st.ctx.totalTurns });
     // 主线推进：把最近剧情（输入+正文+账本）交给导演比对关键词
     st.lastContext = `${text}\n${result.content}`;
     const adv = st.director.advance(`${st.lastContext}\n${snapshotText(st.ledger.load())}`, st.ctx.totalTurns);

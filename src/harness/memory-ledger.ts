@@ -138,22 +138,27 @@ const SCRIBE_SYSTEM = `你是剧情记账员。根据最新一轮剧情，把确
 {
   "characters": [{"key":"唯一名","name":"姓名","desc":"身份/外貌","status":"存活/受伤/失踪/死亡"}],
   "items": [{"key":"唯一名","name":"物品名","owner":"归属","status":"状态"}],
-  "relations": [{"key":"A-B","who":"A","target":"B","type":"关系类型","level":0}],
+  "relations": [{"key":"A-B","who":"A","target":"B","type":"关系类型","level":-3到3,"emotion":"情感标签（如：信任/亏欠/戒心/敌意/亲近/畏惧，记录具体事件带来的情感记忆）"}],
   "plots": [{"key":"唯一名","desc":"伏笔/线索内容","status":"未回收"}],
   "notes": [{"key":"唯一名","content":"备注"}]
 }
-没有变化的分区输出空数组 []。`;
+注意：\n1. relations 的 emotion 字段记录这条关系的"情感温度"——不止 level 数字，还要写明情感来源（如\"邓恩把怀表交给他后，克莱恩对邓恩的信任加深\"），后续剧情中 NPC 记得玩家做过什么。\n2. 玩家画像：每 5 回合更新一次 notes 中的固定条目 {\"key\":\"sys-player-profile\",\"content\":{\"pace\":\"节奏偏好\",\"decisionPattern\":\"决策风格（如：谨慎/激进/试探）\",\"recurringThemes\":[\"反复出现的主题\"],\"actionBias\":\"行动偏好（对话/调查/战斗）\",\"frustration\":\"讨厌什么\"}}，根据玩家最近的选择推断，让短输入兑底与选项设计更贴合玩家。\n没有变化的分区输出空数组 []。`;
 
 function buildScribePrompt(opts: {
   characterName: string;
   userInput: string;
   narrative: string;
   current: Ledger;
+  turns?: number;
 }): string {
+  const profileHint =
+    opts.turns && opts.turns % 5 === 0
+      ? "\n【提醒】本轮为第 N 回合（每 5 回合），请更新 notes 中的玩家画像 sys-player-profile（若本轮玩家有明确选择倾向）。"
+      : "";
   return `【角色】${opts.characterName}
 【本轮用户输入】${opts.userInput}
 【本轮剧情正文】${opts.narrative}
-【当前账本】${JSON.stringify(opts.current)}
+【当前账本】${JSON.stringify(opts.current)}${profileHint}
 请输出更新后的增量账本 JSON。`;
 }
 
@@ -183,7 +188,7 @@ export class LedgerService {
     return loadLedger(this.stateDir);
   }
 
-  async updateAfterTurn(opts: { characterName: string; userInput: string; narrative: string }): Promise<LedgerUpdate> {
+  async updateAfterTurn(opts: { characterName: string; userInput: string; narrative: string; turns?: number }): Promise<LedgerUpdate> {
     if (!opts.narrative.trim()) return { ok: false, error: "本轮无正文，跳过记账" };
     const current = this.load();
     try {
