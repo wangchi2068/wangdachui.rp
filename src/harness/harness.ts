@@ -47,6 +47,8 @@ export interface HarnessOptions {
   onDecisionRequested?: (card: DecisionCard) => Promise<string>;
   /** 掷骰回调：模型调用 roll 时暂停循环，把检定卡交给调用方，返回玩家的真随机投掷结果 */
   onRollRequested?: (card: RollCard) => Promise<RollOutcome>;
+  /** 会话级 stateDir：决策留痕写会话目录而非全局（多会话隔离） */
+  stateDir?: string;
   /** 覆盖工具列表（测试注入用） */
   tools?: ToolDef[];
   temperature?: number;
@@ -133,7 +135,7 @@ export class Harness {
           const card = parseDecisionCard(args);
           if (card) {
             const choice = opts.onDecisionRequested ? await opts.onDecisionRequested(card) : (card.options[0] ?? "");
-            recordDecision(this.cfg.stateDir, card, choice);
+            recordDecision(opts.stateDir ?? this.cfg.stateDir, card, choice);
             decisions.push({ ...card, at: new Date().toISOString(), choice });
             output = `用户已选择：${choice}。请严格按用户的这个选择继续剧情，不要推翻用户的决定。`;
           } else {

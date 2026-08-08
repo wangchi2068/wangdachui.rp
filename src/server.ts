@@ -71,16 +71,33 @@ interface SessionState {
   registry: ToolRegistry;
   harness: Harness;
   lastContext: string;
+  /** 回合串行化：同一会话的 handleChat 排队执行，防止并发写 state 交错 */
+  queue: Promise<void>;
+  /** 最近访问时间（LRU 回收用） */
+  lastAccess: number;
 }
 
 /** 默认会话（HTTP API / 无 sid 时用）：state 目录与全局同层 */
 const sessions = new Map<string, SessionState>();
 
+/** 会话 LRU 上限：超过则回收最久未访问的（防常驻内存泄漏） */
+const MAX_SESSIONS = 64;
+function touchSession(st: SessionState): void {
+  st.lastAccess = Date.now();
+  if (sessions.size <= MAX_SESSIONS) return;
+  // 回收最久未访问的非 default 会话
+  const victims = [...sessions.entries()]
+    .filter(([k]) => k !== "default")
+    .sort((a, b) => a[1].lastAccess - b[1].lastAccess)
+    .slice(0, sessions.size - MAX_SESSIONS);
+  for (const [k] of victims) sessions.delete(k);
+}
+
 /** 获取（或创建）会话实例：sid 为空/无 sid 用默认目录，否则用 stateDir/sessions/<sid>/ */
 function getSession(sid?: string | null): SessionState {
   const key = sid && /^[A-Za-z0-9_\-]{4,64}$/.test(sid) ? sid : "default";
   const exist = sessions.get(key);
-  if (exist) return exist;
+  if (exist) { touchSession(exist); return exist; }
   const stateDir = key === "default" ? cfg.stateDir : resolve(cfg.stateDir, "sessions", key);
   const st: SessionState = {
     sid: key,
@@ -92,6 +109,8 @@ function getSession(sid?: string | null): SessionState {
     registry: new ToolRegistry({ stateDir }),
     harness: new Harness(client, new ToolRegistry({ stateDir }), cfg),
     lastContext: "",
+    queue: Promise.resolve(),
+    lastAccess: Date.now(),
   };
   registerBuiltinTools(st.registry, { stateDir });
   registerDecisionTool(st.registry);
@@ -530,7 +549,10 @@ wss.on("connection", (socket: WebSocket, req: IncomingMessage) => {
         pending.resolve(msg.text);
         conn.send({ type: "warn", message: "已把你的输入作为决策卡的自由选择：" + msg.text });
       } else if (!pendingRoll) {
-        void handleChat(conn, st, msg.text);
+        // 会话串行化：同一会话的回合排队执行，防并发写 state 交错
+        touchSession(st);
+        const text = msg.text as string;
+        st.queue = st.queue.then(() => handleChat(conn, st, text)).catch((e) => conn.send({ type: "error", message: (e as Error).message }));
       }
     }
     if (msg.type === "command" && typeof msg.text === "string") void handleCommand(conn, st, msg.text);
@@ -672,17 +694,24 @@ async function handleChat(conn: Connection, st: SessionState, text: string): Pro
     const system = buildSystem(st);
     const visible = st.ctx.visibleMessages(system, text);
     const result = await st.harness.runTurn(visible, {
+      stateDir: st.stateDir,
       onNarrativeDelta: (d) => conn.send({ type: "delta", text: d }),
-      onDecisionRequested: (cardData: DecisionCard) =>
-        new Promise<string>((resolve) => {
+      onDecisionRequested: (cardData: DecisionCard) => {
+        const wait = new Promise<string>((resolve) => {
           connDecisions.set(conn.socket, { resolve });
           conn.send({ type: "card", card: cardData });
-        }),
-      onRollRequested: (rcard: RollCard) =>
-        new Promise<RollOutcome>((resolve) => {
+        });
+        // 挂起 120s 超时：用户不响应时默认选第一个，防 turn 永久阻塞
+        return Promise.race([wait, new Promise<string>((r) => setTimeout(() => r(String(cardData.options[0] ?? "")), 120_000))]);
+      },
+      onRollRequested: (rcard: RollCard) => {
+        const wait = new Promise<RollOutcome>((resolve) => {
           connRolls.set(conn.socket, { resolve, card: rcard });
           conn.send({ type: "roll_card", card: rcard });
-        }),
+        });
+        const fallback: RollOutcome = { die: 10, total: 10 + rcard.mod, mod: rcard.mod, dc: rcard.dc, success: 10 + rcard.mod >= rcard.dc };
+        return Promise.race([wait, new Promise<RollOutcome>((r) => setTimeout(() => r(fallback), 120_000))]);
+      },
     });
     if (result.stoppedBy === "max-turns") conn.send({ type: "warn", message: "本轮达到工具循环上限，正文可能不完整，可重发或输入『继续』" });
     else if (!result.content.trim()) conn.send({ type: "warn", message: "模型本轮未产出正文（可能只输出了思考链），换个说法重发试试" });
