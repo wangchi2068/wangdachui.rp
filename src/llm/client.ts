@@ -206,6 +206,7 @@ export class LlmClient {
     let reasoning = "";
     const toolCalls: ToolCall[] = [];
     let finishReason = "";
+    let usage: ChatResult["usage"] = undefined;
     // 流式空闲超时：SSE 连接已建立但服务端停止推流（LLM 挂起/过载）时，
     // reader.read() 会永久挂起，必须超时 abort 而不是让前端永久"生成中"。
     const IDLE_TIMEOUT_MS = 45_000;
@@ -269,6 +270,13 @@ export class LlmClient {
           }
           const delta = chunk.choices?.[0]?.delta ?? {};
           finishReason = chunk.choices?.[0]?.finish_reason ?? finishReason;
+          if (chunk.usage && typeof chunk.usage.total_tokens === "number") {
+            usage = {
+              prompt: chunk.usage.prompt_tokens ?? 0,
+              completion: chunk.usage.completion_tokens ?? 0,
+              total: chunk.usage.total_tokens,
+            };
+          }
           if (typeof delta.reasoning_content === "string") reasoning += delta.reasoning_content;
           if (typeof delta.content === "string") {
             content += delta.content;
@@ -284,6 +292,6 @@ export class LlmClient {
         }
       }
     }
-    return { content, reasoning, toolCalls: toolCalls.filter(Boolean), finishReason, usage: undefined };
+    return { content, reasoning, toolCalls: toolCalls.filter(Boolean), finishReason, usage };
   }
 }

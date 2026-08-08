@@ -34,6 +34,7 @@ function makeConfig(dir: string, budget: number, maxTurns = 5): Config {
     maxLoopTurns: maxTurns,
     stateDir: dir,
     autoSnapshotEvery: 0,
+    maxTokensPerDay: 0,
   };
 }
 

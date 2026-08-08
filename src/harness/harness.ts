@@ -35,6 +35,8 @@ export interface TurnResult {
   added: ChatMessage[];
   /** 实际调用模型的次数 */
   modelCalls: number;
+  /** 累计 token 用量（各次模型调用之和，护栏/成本统计用） */
+  usageTotal: number;
   /** 最后一次模型调用的 finish_reason（用于识别截断） */
   lastFinishReason: string;
   stoppedBy: "done" | "max-turns";
@@ -84,6 +86,7 @@ export class Harness {
     const tools: ToolExecution[] = [];
     const decisions: DecisionRecord[] = [];
     let modelCalls = 0;
+    let usageTotal = 0;
     let lastFinishReason = "";
     // 本轮正文增量先缓冲：只有确定是最终剧情时才流式外发；
     // 若因循环上限终止，也把最后一次调用的内容外发，避免用户什么都看不到。
@@ -105,6 +108,7 @@ export class Harness {
       reasoning += result.reasoning;
       lastFinishReason = result.finishReason;
       lastContent = result.content;
+      usageTotal += result.usage?.total ?? 0;
 
       const assistantMsg: ChatMessage = { role: "assistant", content: result.content || null };
       if (result.toolCalls.length) assistantMsg.tool_calls = result.toolCalls;
@@ -120,6 +124,7 @@ export class Harness {
           decisions,
           added: messages.slice(history.length),
           modelCalls,
+          usageTotal,
           lastFinishReason,
           stoppedBy: "done",
         };
@@ -172,6 +177,7 @@ export class Harness {
       decisions,
       added: messages.slice(history.length),
       modelCalls,
+      usageTotal,
       lastFinishReason,
       stoppedBy: "max-turns",
     };

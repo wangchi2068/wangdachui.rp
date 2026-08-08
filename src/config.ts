@@ -29,6 +29,8 @@ export interface Config {
   contextBudgetChars: number;
   /** agent 循环最大迭代轮数，防死循环 */
   maxLoopTurns: number;
+  /** 每会话每日 token 上限（0 = 不限） */
+  maxTokensPerDay: number;
   /** 运行期数据目录（账本/存档等，纯 JSON） */
   stateDir: string;
   /** 每 N 回合自动存档（0 = 关闭） */
@@ -67,6 +69,7 @@ export function loadConfig(): Config {
     compressModel: process.env.WANGDACHUI_COMPRESS_MODEL || undefined,
     contextBudgetChars: Number(process.env.WANGDACHUI_CONTEXT_BUDGET_CHARS ?? 24000),
     maxLoopTurns: Number(process.env.WANGDACHUI_MAX_LOOP_TURNS ?? 10),
+    maxTokensPerDay: Number(process.env.WANGDACHUI_MAX_TOKENS_PER_DAY ?? 0),
     stateDir: stateMode === "tmp" ? resolve("/tmp", "wangdachui-state") : resolve(process.cwd(), "state"),
     autoSnapshotEvery: Number(process.env.WANGDACHUI_AUTO_SNAPSHOT_EVERY ?? 5),
     campaign: process.env.WANGDACHUI_CAMPAIGN || "lotm", // 默认诡秘之主·廷根篇战役

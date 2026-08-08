@@ -14,6 +14,8 @@ export interface StoredTurn {
 export interface PruneResult {
   compressedTurns: number;
   archivedChars: number;
+  /** 是否还有压缩欠账（预算仍超，需异步补压） */
+  pending: boolean;
 }
 
 /** 字符估算（中文为主的剧情，约 3 字符 ≈ 1 token，偏保守） */
@@ -178,7 +180,7 @@ export class ContextManager {
     let archivedChars = 0;
     let guard = 0;
 
-    while (this.compressedUpTo < this.turns.length && guard++ < 30) {
+    while (this.compressedUpTo < this.turns.length && guard++ < 2) {
       if (this.estimateVisible(opts.systemText) <= available) break;
       const turn = this.turns[this.compressedUpTo];
       if (!turn) break;
@@ -197,7 +199,33 @@ export class ContextManager {
     mkdirSync(this.dir, { recursive: true });
     appendFileSync(this.historyPath(), JSON.stringify(this.turns[this.turns.length - 1]) + "\n", "utf8");
     this.persist();
-    return { compressedTurns, archivedChars };
+    return { compressedTurns, archivedChars, pending: compressedTurns > 0 && this.turns.length - this.compressedUpTo > 0 };
+  }
+
+  /**
+   * 异步补压：回合已返回后继续压缩剩余超预算回合（fire-and-forget，不阻塞玩家）。
+   * 每批最多 2 次合并，直到预算达标或回合耗尽。
+   */
+  async drainCompression(systemText: string): Promise<number> {
+    let n = 0;
+    const budget = this.cfg.contextBudgetChars;
+    const available = Math.floor(budget * 0.8) - systemText.length;
+    while (n < 4 && this.compressedUpTo < this.turns.length) {
+      if (this.estimateVisible(systemText) <= available) break;
+      const turn = this.turns[this.compressedUpTo];
+      if (!turn) break;
+      this.summary = await this.mergeSummary(turn);
+      mkdirSync(this.dir, { recursive: true });
+      appendFileSync(
+        this.archivePath(),
+        JSON.stringify({ id: turn.id, at: turn.at, userInput: turn.userInput, messages: turn.messages }) + "\n",
+        "utf8",
+      );
+      this.compressedUpTo++;
+      n++;
+    }
+    this.persist();
+    return n;
   }
 
   /** 旁侧模型：把最旧回合并入前情提要（输出合并后的完整摘要，非增量） */

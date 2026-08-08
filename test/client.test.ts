@@ -62,6 +62,7 @@ function cfgWithFallbacks(primary: { apiBase: string; apiKey: string; model: str
     maxLoopTurns: 5,
     stateDir: "/tmp",
     autoSnapshotEvery: 0,
+    maxTokensPerDay: 0,
   };
 }
 

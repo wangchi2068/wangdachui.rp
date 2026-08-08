@@ -77,6 +77,8 @@ interface SessionState {
   lastAccess: number;
   /** 世界书向量索引缓存（会话内复用，避免每回合重建） */
   loreIndex: import("./roleplay/vector.ts").VectorIndex | null;
+  /** 会话 token 用量（日期戳 + 累计，护栏用） */
+  tokenUsage: { day: string; total: number };
 }
 
 /** 默认会话（HTTP API / 无 sid 时用）：state 目录与全局同层 */
@@ -123,6 +125,7 @@ function getSession(sid?: string | null): SessionState {
     queue: Promise.resolve(),
     lastAccess: Date.now(),
     loreIndex: null,
+    tokenUsage: { day: new Date().toISOString().slice(0, 10), total: 0 },
   };
   registerBuiltinTools(st.registry, { stateDir });
   registerDecisionTool(st.registry);
@@ -705,6 +708,15 @@ async function handleChat(conn: Connection, st: SessionState, text: string): Pro
     conn.send({ type: "error", message: "请先导入角色卡" });
     return;
   }
+  // token 护栏：每会话每日上限（0 = 不限）
+  if (cfg.maxTokensPerDay > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (st.tokenUsage.day !== today) st.tokenUsage = { day: today, total: 0 };
+    if (st.tokenUsage.total >= cfg.maxTokensPerDay) {
+      conn.send({ type: "warn", message: `⚠ 今日 token 用量已达上限（${cfg.maxTokensPerDay}），请明日再试或 /new 新会话` });
+      return;
+    }
+  }
   try {
     st.lastContext = text;
     const system = buildSystem(st);
@@ -742,7 +754,16 @@ async function handleChat(conn: Connection, st: SessionState, text: string): Pro
         estTokens: Math.round(estimateChars(visible) / 3), // 字符估算，仅供展示
       },
     });
+    if (result.usageTotal > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (st.tokenUsage.day !== today) st.tokenUsage = { day: today, total: 0 };
+      st.tokenUsage.total += result.usageTotal;
+    }
     const prune = await st.ctx.endTurn({ systemText: system, userInput: text, added: result.added });
+    // 压缩欠账异步补压（不阻塞玩家；批次上限由 drainCompression 内部限制）
+    if (prune.pending) {
+      void st.ctx.drainCompression(system).catch(() => {});
+    }
     const up = await st.ledger.updateAfterTurn({ characterName: st.card.name, userInput: text, narrative: result.content });
     // 主线推进：把最近剧情（输入+正文+账本）交给导演比对关键词
     st.lastContext = `${text}\n${result.content}`;
