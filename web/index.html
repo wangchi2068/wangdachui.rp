@@ -350,8 +350,9 @@ function renderRollCard(card) {
   const box = document.createElement("div");
   box.className = "roll-box";
   const modStr = card.mod >= 0 ? "+" + card.mod : String(card.mod);
+  const labelSafe = esc(String(card.label ?? "检定"));
   box.innerHTML =
-    `<div class="rq">🎲 检定 · ${card.label}</div>` +
+    `<div class="rq">🎲 检定 · ${labelSafe}</div>` +
     `<div class="rr">行动成败在此一掷</div>` +
     `<div class="roll-math">D20 <b>${modStr}</b> vs <b>DC${card.dc}</b></div>` +
     `<div class="dice"><div class="face">?</div></div>` +
@@ -418,7 +419,7 @@ function renderLedger(ledger) {
       const li = document.createElement("li");
       const { key, ...rest } = it;
       const desc = Object.entries(rest).filter(([, v]) => v !== null && v !== undefined && v !== "").map(([k, v]) => `${k}：${typeof v === "object" ? JSON.stringify(v) : v}`).join("，");
-      li.innerHTML = `<span class="label">${key || "•"}</span>${esc(desc || "(空)")}`;
+      li.innerHTML = `<span class="label">${esc(key || "•")}</span>${esc(desc || "(空)")}`;
       ul.appendChild(li);
     }
     box.appendChild(ul);

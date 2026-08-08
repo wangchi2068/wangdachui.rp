@@ -82,7 +82,16 @@ const sessions = new Map<string, SessionState>();
 
 /** 会话 LRU 上限：超过则回收最久未访问的（防常驻内存泄漏） */
 const MAX_SESSIONS = 64;
-function touchSession(st: SessionState): void {
+
+/** 限制请求 body 体积（防超大 body 打爆内存），超过返回 null */
+async function readBodyLimited(req: import("node:http").IncomingMessage, maxBytes = 5 * 1024 * 1024): Promise<string | null> {
+  let body = "";
+  for await (const chunk of req) {
+    body += chunk;
+    if (body.length > maxBytes) return null;
+  }
+  return body;
+}function touchSession(st: SessionState): void {
   st.lastAccess = Date.now();
   if (sessions.size <= MAX_SESSIONS) return;
   // 回收最久未访问的非 default 会话
@@ -383,8 +392,12 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/card") {
       const st = getSession(url.searchParams.get("sid"));
-      let body = "";
-      for await (const chunk of req) body += chunk;
+      const body = await readBodyLimited(req);
+      if (body === null) {
+        res.writeHead(413, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "请求体过大（>5MB）" }));
+        return;
+      }
       let parsed: CharacterCard | null = null;
       try {
         const bodyObj = JSON.parse(body) as { json?: unknown; pngBase64?: string };
@@ -426,8 +439,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/snapshot") {
       const st = getSession(url.searchParams.get("sid"));
-      let body = "";
-      for await (const chunk of req) body += chunk;
+      const body = (await readBodyLimited(req)) ?? "";
       const label = (() => {
         try {
           const b = JSON.parse(body) as { label?: string };
@@ -443,8 +455,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/restore") {
       const st = getSession(url.searchParams.get("sid"));
-      let body = "";
-      for await (const chunk of req) body += chunk;
+      const body = (await readBodyLimited(req)) ?? "";
       let id = "";
       try {
         id = String((JSON.parse(body) as { id?: unknown }).id ?? "");

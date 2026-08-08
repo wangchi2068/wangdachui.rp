@@ -71,6 +71,7 @@ export function listSnapshots(stateDir: string): SnapshotMeta[] {
  * 并从磁盘重新加载角色卡。
  */
 export function restoreSnapshot(stateDir: string, id: string): { ok: boolean; error?: string; at?: string; label?: string } {
+  if (!validateSnapshotId(id)) return { ok: false, error: `非法快照 id：${id}` };
   const p = resolve(stateDir, "snapshots", `${id}.json`);
   if (!existsSync(p)) return { ok: false, error: `快照不存在：${id}` };
   let bundle: SnapshotBundle;
@@ -87,5 +88,11 @@ export function restoreSnapshot(stateDir: string, id: string): { ok: boolean; er
 }
 
 export function deleteSnapshot(stateDir: string, id: string): void {
+  if (!validateSnapshotId(id)) return;
   rmSync(resolve(stateDir, "snapshots", `${id}.json`), { force: true });
+}
+
+/** 快照 id 白名单校验：防路径穿越（id 只能是指定字符，禁止 ../ 等） */
+export function validateSnapshotId(id: string): boolean {
+  return typeof id === "string" && /^[A-Za-z0-9._\-]{1,80}$/.test(id) && !id.includes("..");
 }
