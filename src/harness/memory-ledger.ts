@@ -139,7 +139,7 @@ const SCRIBE_SYSTEM = `你是剧情记账员。根据最新一轮剧情，把确
   "characters": [{"key":"唯一名","name":"姓名","desc":"身份/外貌","status":"存活/受伤/失踪/死亡"}],
   "items": [{"key":"唯一名","name":"物品名","owner":"归属","status":"状态"}],
   "relations": [{"key":"A-B","who":"A","target":"B","type":"关系类型","level":-3到3,"emotion":"情感标签（如：信任/亏欠/戒心/敌意/亲近/畏惧，记录具体事件带来的情感记忆）"}],
-  "plots": [{"key":"唯一名","desc":"伏笔/线索内容","status":"未回收"}],
+  "plots": [{"key":"唯一名","desc":"伏笔/线索内容","status":"未回收","dueAct":"应在第几幕回收（如：幕3）","trigger":"触发关键词（玩家/NPC说到这个词时回收）","hook":"回收时抛什么钩子（一句话）"}],
   "notes": [{"key":"唯一名","content":"备注"}]
 }
 注意：\n1. relations 的 emotion 字段记录这条关系的"情感温度"——不止 level 数字，还要写明情感来源（如\"邓恩把怀表交给他后，克莱恩对邓恩的信任加深\"），后续剧情中 NPC 记得玩家做过什么。\n2. 玩家画像：每 5 回合更新一次 notes 中的固定条目 {\"key\":\"sys-player-profile\",\"content\":{\"pace\":\"节奏偏好\",\"decisionPattern\":\"决策风格（如：谨慎/激进/试探）\",\"recurringThemes\":[\"反复出现的主题\"],\"actionBias\":\"行动偏好（对话/调查/战斗）\",\"frustration\":\"讨厌什么\"}}，根据玩家最近的选择推断，让短输入兑底与选项设计更贴合玩家。\n没有变化的分区输出空数组 []。`;

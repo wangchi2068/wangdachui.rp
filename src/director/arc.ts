@@ -18,6 +18,12 @@ export interface Phase {
   minTurns: number;
   /** 刚推进到本阶段时，注入一次的事件钩子（把剧情推向下一幕） */
   eventHint?: string;
+  /** 本幕情绪基调（导演注入 system，防平铺流水账） */
+  mood?: string;
+  /** 本幕张力（1-10，注入后模型据此把握节奏） */
+  tension?: number;
+  /** 本幕节奏要点（可选，如"开场给虚假安全感 → 中段揭露背叛 → 结尾逼玩家选择"） */
+  beats?: string[];
 }
 
 export const MAIN_ARC: Phase[] = [

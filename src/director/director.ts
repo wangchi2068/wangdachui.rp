@@ -108,6 +108,12 @@ export class Director {
     lines.push(`【主线·${phase.title}】`);
     lines.push(`当前目标：${phase.objectives.join("；")}`);
     if (phase.summary) lines.push(`剧情方向：${phase.summary}`);
+    if (phase.mood || phase.tension) {
+      lines.push(`【本幕基调】情绪：${phase.mood ?? "—"}；张力：${phase.tension ?? 5}/10`);
+    }
+    if (phase.beats?.length) {
+      lines.push(`【本幕节奏】${phase.beats.join(" → ")}`);
+    }
     if (this.consumePendingEvent() && phase.eventHint) {
       lines.push(`【主线事件】${phase.eventHint}`);
     }
