@@ -60,6 +60,61 @@
   .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; color: var(--dim); }
   .stat-row b { color: var(--text); font-weight: 600; }
   #summary { font-size: 12px; color: var(--dim); line-height: 1.6; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+
+  /* ===== 移动端适配（诡秘之主 / 裂界 共用） ===== */
+  @media (max-width: 768px) {
+    body { height: 100dvh; overflow: hidden; }
+    #app { flex-direction: column; }
+    main { flex: 1; min-height: 0; }
+    /* 顶栏：窄屏下紧凑，标题省略、chips 只留角色 */
+    header { padding: 8px 10px; gap: 6px; flex-wrap: wrap; }
+    header .title { font-size: 13px; }
+    header .chip { font-size: 11px; padding: 2px 8px; }
+    #chipModel, #chipState { display: none; } /* 手机只留角色 chip，省空间 */
+    #newBtn { padding: 6px 10px; font-size: 12px; }
+    #exportBtn { padding: 6px 10px; font-size: 12px; }
+    /* 消息区：窄屏全宽 */
+    #messages { padding: 12px 10px; gap: 10px; }
+    .msg { max-width: 100%; font-size: 15px; padding: 10px 13px; line-height: 1.75; }
+    .card-box { width: 100%; max-width: 100%; padding: 14px 12px; }
+    .card-box .opt { padding: 12px 14px; font-size: 15px; margin-top: 10px; border-radius: 10px; }
+    .card-box input[type=text] { padding: 11px 14px; font-size: 15px; }
+    .warn { font-size: 13px; }
+    /* 输入区：触控友好 */
+    .composer { padding: 8px 10px 10px; gap: 6px; }
+    .composer .row { gap: 8px; }
+    #input { font-size: 16px; padding: 12px 14px; min-height: 44px; } /* 16px 防 iOS 聚焦缩放 */
+    #send { min-width: 72px; min-height: 44px; font-size: 15px; padding: 0 16px; }
+    #quickCmd { gap: 5px; }
+    #quickCmd button { padding: 6px 10px; font-size: 12px; }
+    /* 侧栏：手机上收起为底部抽屉（点“状态”按钮展开） */
+    aside {
+      position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+      width: 100%; max-height: 55dvh; border-left: none; border-top: 1px solid var(--border);
+      transform: translateY(100%); transition: transform .25s ease;
+      z-index: 60; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.5);
+      overflow-y: auto;
+    }
+    aside.open { transform: translateY(0); }
+    /* 抽屉拉手 */
+    aside::before {
+      content: ""; display: block; width: 44px; height: 4px; border-radius: 999px;
+      background: var(--border); margin: 6px auto 2px;
+    }
+    /* 顶栏加“状态”按钮（手机上展开侧栏） */
+    #asideToggle {
+      display: inline-block !important;
+      background: var(--panel2); border: 1px solid var(--border); color: var(--dim);
+      border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px;
+    }
+    /* 点暗层关抽屉 */
+    .aside-mask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 55; }
+    .aside-mask.show { display: block; }
+    .empty-tip { margin-top: 8vh; font-size: 14px; }
+  }
+  /* 桌面默认隐藏“状态”按钮和遮罩 */
+  #asideToggle { display: none; }
+  .aside-mask { display: none; }
 </style>
 </head>
 <body>
@@ -71,6 +126,7 @@
       <span class="chip" id="chipModel">模型：—</span>
       <span class="chip" id="chipState">窗口 —/—</span>
       <button id="newBtn" title="清空当前对话，重新开场" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:8px;padding:4px 12px;cursor:pointer;font-size:12px;">＋ 新建对话</button>
+      <button id="asideToggle" title="状态面板">☰ 状态</button>
       <div style="position:relative;" id="exportWrap">
         <button id="exportBtn" title="导出本次对话" style="background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:8px;padding:4px 12px;cursor:pointer;font-size:12px;">⬇ 导出</button>
         <div id="exportMenu" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;">
@@ -141,12 +197,22 @@
       <ul id="snapList" style="max-height:180px;overflow-y:auto;"></ul>
     </div>
   </aside>
+  <div class="aside-mask" id="asideMask"></div>
 </div>
 
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const els = { messages: $("messages"), input: $("input"), send: $("send"), cardFile: $("cardFile"), uploadBtn: $("uploadBtn") };
+
+// 移动端侧栏抽屉开关
+const aside = document.querySelector("aside");
+const asideToggle = $("asideToggle");
+const asideMask = $("asideMask");
+function openAside() { aside?.classList.add("open"); asideMask?.classList.add("show"); }
+function closeAside() { aside?.classList.remove("open"); asideMask?.classList.remove("show"); }
+asideToggle?.addEventListener("click", () => aside?.classList.contains("open") ? closeAside() : openAside());
+asideMask?.addEventListener("click", closeAside);
 const LEDGER_LABEL = { characters: "人物", items: "物品", relations: "关系", plots: "伏笔", notes: "备注" };
 let busy = false;
 let cardEl = null; // 正在等待选择的决策卡 DOM

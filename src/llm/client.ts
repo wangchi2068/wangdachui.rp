@@ -223,10 +223,28 @@ export class LlmClient {
         ]);
       } catch (e) {
         // 空闲超时（服务端停止推流）：清理流。有内容按已有内容返回；
-        // 无内容则返回空结果（不抛错，避免进入 request 的 provider 重试风暴——
-        // 超时重试同一请求往往同样超时，白白放大等待）。调用方拿到空结果自然结束回合。
-        reader.cancel().catch(() => {});
+        // 无内容则降级为非流式请求重试——非流式走 request 的 90s 超时 + provider 重试，
+        // 能拿到完整回复（SSE 挂起多发生在长回复/长上下文，非流式通常稳定）。
+        reader.cancel().catch(() => {}); // fire-and-forget：不阻塞降级（cancel 在 SSE 挂着时可能不返回）
         if (content || reasoning || toolCalls.length) break;
+        console.warn("[llm] SSE 空闲超时且无内容，降级非流式请求一次");
+        const fallbackRes = await this.request(messages, { ...opts, stream: false });
+        const fallbackData = (await fallbackRes.json()) as {
+          choices?: { message?: { content?: string | null; reasoning_content?: string; tool_calls?: ToolCall[] }; finish_reason?: string }[];
+        };
+        const msg = fallbackData.choices?.[0]?.message ?? {};
+        const fallbackContent = typeof msg.content === "string" ? msg.content : "";
+        if (fallbackContent || Array.isArray(msg.tool_calls) && msg.tool_calls.length) {
+          if (fallbackContent && opts.onDelta) opts.onDelta(fallbackContent);
+          return {
+            content: fallbackContent,
+            reasoning: typeof msg.reasoning_content === "string" ? msg.reasoning_content : "",
+            toolCalls: Array.isArray(msg.tool_calls) ? msg.tool_calls : [],
+            finishReason: fallbackData.choices?.[0]?.finish_reason ?? "",
+            usage: undefined,
+          };
+        }
+        // 降级也空：返回空结果（server 会提示玩家重发）
         return { content: "", reasoning, toolCalls: [], finishReason: "", usage: undefined };
       }
       const { done, value } = readResult;
