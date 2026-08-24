@@ -2,9 +2,11 @@
 .env
 *.local.json
 
-# 运行期数据
+# 运行时数据
 state/
 node_modules/
+logs/
+*.log
 
 # 系统
 .DS_Store

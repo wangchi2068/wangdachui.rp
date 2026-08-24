@@ -171,11 +171,13 @@ docker compose up -d --build
 - [ ] 手机移动网络实测能玩（留给用户）
 - [x] 已知晓安全注意事项（地址不公开、电脑需开机）
 
-### 8.1 当前公网地址（2026-08-08 记录）
+### 8.1 当前公网地址（2026-08-10 更新：IP 改为静态 192.168.10.238 后重启，地址已变更）
 
 | 战役 | 公网地址 | 本地映射 | 验证结果 |
 |---|---|---|---|
-| 诡秘之主·王大锤 | `https://29bb6e5a.r18.cpolar.top`（http 同域） | 127.0.0.1:7620 | 页面 200 ✓ WS init ✓ HTTP 对话 ✓ WS 全回合（delta+turn_done）✓ |
-| 裂界·潮声 | `https://6b9c6b1.r18.cpolar.top`（http 同域） | 127.0.0.1:7621 | 页面 200 ✓ WS init ✓ |
+| 诡秘之主·王大锤 | `https://29e28aee.r18.cpolar.top`（http 同域） | 127.0.0.1:7620 | 页面 200 ✓ WS init ✓ HTTP 对话 ✓ WS 全回合（delta+turn_done）✓ |
+| 裂界·潮声 | `https://33ecb09e.r7.cpolar.cn`（http 同域） | 127.0.0.1:7621 | 页面 200 ✓ WS init ✓ |
 
-> 注意：免费版子域名为随机，重启穿透后地址会变，需重新记录。重启命令：`cpolar http 7620` / `cpolar http 7621`（二进制在 `C:\Users\wangchi2068\cpolar-portable\cpolar\`）。
+> 2026-08-08 旧地址（已失效）：`29bb6e5a.r18.cpolar.top`（7620）、`6b9c6b1.r18.cpolar.top`（7621）。
+>
+> 注意：免费版子域名为随机，重启穿透后地址会变，需重新记录。重启命令：`cpolar http 7620` / `cpolar http 7621`（二进制在 `C:\Users\wangchi2068\cpolar-portable\cpolar\`，先 `taskkill //F //IM cpolar.exe` 再按顺序启动，避免 4040 状态端口冲突）。
