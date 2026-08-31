@@ -130,6 +130,7 @@ async function readBodyLimited(
 	}
 	return body;
 }
+/** 回收最久未访问的非 default 会话 */
 function touchSession(st: SessionState): void {
 	st.lastAccess = Date.now();
 	if (sessions.size <= MAX_SESSIONS) return;
@@ -138,7 +139,10 @@ function touchSession(st: SessionState): void {
 		.filter(([k]) => k !== "default")
 		.sort((a, b) => a[1].lastAccess - b[1].lastAccess)
 		.slice(0, sessions.size - MAX_SESSIONS);
-	for (const [k] of victims) sessions.delete(k);
+	for (const [k, v] of victims) {
+		v.ctx.close(); // 释放 SQLite 句柄（Windows 下开着句柄会阻止目录删除/回档替换）
+		sessions.delete(k);
+	}
 }
 
 /** 获取（或创建）会话实例：sid 为空/无 sid 用默认目录，否则用 stateDir/sessions/<sid>/ */
@@ -708,7 +712,8 @@ const server = createServer(async (req, res) => {
 				res.end(JSON.stringify({ error: result.error }));
 				return;
 			}
-			// 重建内存态：上下文管理器（回合/摘要）与角色卡都从磁盘重新加载
+			// 重建内存态：先关旧实例的 SQLite 句柄再重建（上下文管理器与角色卡都从磁盘重新加载）
+			st.ctx.close();
 			st.ctx = new ContextManager(client, cfg, st.stateDir);
 			st.director = new Director(st.stateDir, loadCampaignArc()); // 主线进度随快照回档
 			st.card = loadDefaultCard(st.stateDir);
@@ -904,6 +909,7 @@ async function handleCommand(
 					notice(`回档失败：${r.error}`);
 					break;
 				}
+				st.ctx.close();
 				st.ctx = new ContextManager(client, cfg, st.stateDir);
 				st.director = new Director(st.stateDir, loadCampaignArc());
 				st.card = loadDefaultCard(st.stateDir);

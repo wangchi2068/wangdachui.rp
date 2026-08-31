@@ -22,6 +22,21 @@ export interface ToolExecution {
   ok: boolean;
 }
 
+/**
+ * 出口闸门：剥掉正文里的内联思考块。
+ * 有的模型不走 reasoning_content 字段，而是把 <think>…</think> 直接混进 content
+ * （流式增量与非流式皆可发生）。裸思考上屏会打破沉浸，还会随历史再进上下文，
+ * 被模型当成"正文的一种格式"模仿下去——必须在出口处确定性剔除，不靠提示词。
+ * 未闭合的 <think>（截断场景）剥到结尾；成对标签剥中间，前后正文保留。
+ */
+export function stripInlineThinking(text: string): string {
+  if (!text.includes("<think>")) return text;
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/<think>[\s\S]*$/, "")
+    .trim();
+}
+
 export interface TurnResult {
   /** 最终正文（给用户看的剧情/回复） */
   content: string;
@@ -90,7 +105,6 @@ export class Harness {
     let lastFinishReason = "";
     // 本轮正文增量先缓冲：只有确定是最终剧情时才流式外发；
     // 若因循环上限终止，也把最后一次调用的内容外发，避免用户什么都看不到。
-    let lastBuffer: string[] = [];
     let lastContent = "";
     const toolDefs = opts.tools ?? this.registry.defs();
     const temperature = opts.temperature ?? 0.8;
@@ -98,7 +112,6 @@ export class Harness {
     for (let i = 0; i < this.cfg.maxLoopTurns; i++) {
       modelCalls++;
       const callBuffer: string[] = [];
-      lastBuffer = callBuffer;
       const result = await this.client.stream(messages, {
         tools: toolDefs,
         temperature,
@@ -110,15 +123,26 @@ export class Harness {
       lastContent = result.content;
       usageTotal += result.usage?.total ?? 0;
 
-      const assistantMsg: ChatMessage = { role: "assistant", content: result.content || null };
+      const assistantMsg: ChatMessage = {
+        role: "assistant",
+        content: result.content || null,
+      };
       if (result.toolCalls.length) assistantMsg.tool_calls = result.toolCalls;
       messages.push(assistantMsg);
 
       if (!result.toolCalls.length) {
-        // 自然结束：这是用户看到的正文
+        // 自然结束：这是用户看到的正文。出口闸门先剥内联思考块再外发/入历史，
+        // 且把 assistant 消息改写为剥净后的正文（裸思考不进上下文，防止被模仿）。
+        const clean = stripInlineThinking(result.content);
+        assistantMsg.content = clean || null;
+        if (clean !== result.content) {
+          // 有剥离发生：把缓冲的原始增量整体替换为剥净正文后一次性外发
+          callBuffer.length = 0;
+          if (clean) callBuffer.push(clean);
+        }
         for (const d of callBuffer) opts.onNarrativeDelta?.(d);
         return {
-          content: result.content,
+          content: clean,
           reasoning,
           tools,
           decisions,
@@ -168,10 +192,11 @@ export class Harness {
       }
     }
 
-    // 达到上限：把最后一次调用已缓冲的正文外发（部分正文总比空白好），供诊断
-    for (const d of lastBuffer) opts.onNarrativeDelta?.(d);
+    // 达到上限：把最后一次调用已缓冲的正文剥净后外发（部分正文总比空白好），供诊断
+    const cleanLast = stripInlineThinking(lastContent);
+    for (const d of [cleanLast]) if (d) opts.onNarrativeDelta?.(d);
     return {
-      content: lastContent,
+      content: cleanLast,
       reasoning,
       tools,
       decisions,

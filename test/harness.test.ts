@@ -219,3 +219,50 @@ test("决策卡：参数不合法时回填错误并继续", async () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("出口闸门：内联思考块从正文剥离，不进历史", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "rph-harness-"));
+	try {
+		const client = makeScriptedClient([
+			{ content: "<think>玩家提到了火，我该顺水推舟……</think>火光摇曳，酒馆的门被推开。" },
+		]);
+		const harness = new Harness(client, registryWith(dir), makeConfig(dir));
+		let deltaOut = "";
+		const result = await harness.runTurn([{ role: "user", content: "推门" }], {
+			onNarrativeDelta: (d) => (deltaOut += d),
+		});
+		// 返回正文、流式外发、历史消息三处都无思考块
+		assert.ok(!result.content.includes("<think>"));
+		assert.ok(result.content.startsWith("火光"));
+		assert.ok(!deltaOut.includes("<think>"));
+		const assistantMsgs = result.added.filter((m) => m.role === "assistant");
+		assert.equal(assistantMsgs.length, 1);
+		assert.ok(!String(assistantMsgs[0]!.content).includes("顺水推舟"));
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("出口闸门：未闭合 think（截断）剥到结尾；无标签正文原样保留", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "rph-harness-"));
+	try {
+		// 未闭合：截断场景，思考后无正文 → 剥净后为空
+		const truncated = new Harness(
+			makeScriptedClient([{ content: "<think>只写了半截思考" }]),
+			registryWith(dir),
+			makeConfig(dir),
+		);
+		const r1 = await truncated.runTurn([{ role: "user", content: "x" }]);
+		assert.equal(r1.content, "");
+		// 无标签：一字不动（避免无谓的 trim 伤害正文首尾）
+		const plain = new Harness(
+			makeScriptedClient([{ content: "  平静的一夜。 " }]),
+			registryWith(dir),
+			makeConfig(dir),
+		);
+		const r2 = await plain.runTurn([{ role: "user", content: "x" }]);
+		assert.equal(r2.content, "  平静的一夜。 ");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

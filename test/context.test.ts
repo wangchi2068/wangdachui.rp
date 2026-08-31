@@ -154,3 +154,72 @@ test("上下文：archiveSearch 可检索被压缩的原文", async () => {
 test("上下文：estimateChars 与 charsToTokens", () => {
 	assert.equal(estimateChars([{ role: "user", content: "12345" }]), 5);
 });
+
+test("回档语义：restore 后新 ContextManager 读到快照内容，旧实例 close 后 db 可再写", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "rph-ctx-"));
+	try {
+		const ctxA = new ContextManager(
+			makeMockClient(["A 的摘要"]),
+			makeConfig(dir, 100_000),
+		);
+		await ctxA.endTurn({
+			systemText: "SYS",
+			...turn("A 世界的独特输入", "A 世界的正文"),
+		});
+		// 快照 A（store.exportAll 由 worldline 负责，这里手工构造等价 bundle）
+		const { openStore } = await import("../src/store.ts");
+		{
+			const s = openStore(dir);
+			try {
+				var bundle = { kv: s.exportAll() };
+			} finally {
+				s.close();
+			}
+		}
+		ctxA.close(); // 回档前的句柄释放（修复点：旧实例不 close 会占用 state.db）
+
+		// 模拟"世界线推进后回档"：清空 → 写入与 A 不同的内容 → 再整体写回 A 的快照
+		const ctxB = new ContextManager(
+			makeMockClient(["B 的摘要"]),
+			makeConfig(dir, 100_000),
+		);
+		ctxB.reset();
+		ctxB.close();
+
+		const ctxC = new ContextManager(
+			makeMockClient(["C 的摘要"]),
+			makeConfig(dir, 100_000),
+		);
+		try {
+			// restore 语义：bundle 写回后，新实例读到 A 的回合
+			const s2 = openStore(dir);
+			try {
+				s2.importAll(bundle.kv);
+			} finally {
+				s2.close();
+			}
+			const ctxD = new ContextManager(
+				makeMockClient(["D 的摘要"]),
+				makeConfig(dir, 100_000),
+			);
+			try {
+				assert.equal(ctxD.totalTurns, 1);
+				assert.ok(ctxD.allTurns[0]!.userInput.includes("A 世界的独特输入"));
+				// close 后同库仍可打开写入（句柄已释放，Windows EBUSY 回归线）
+			} finally {
+				ctxD.close();
+			}
+			const s3 = openStore(dir);
+			try {
+				s3.kvSet("probe", "still-writable");
+				assert.equal(s3.kvGet("probe"), "still-writable");
+			} finally {
+				s3.close();
+			}
+		} finally {
+			ctxC.close();
+		}
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
