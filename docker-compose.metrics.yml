@@ -1,0 +1,16 @@
+# 可选：Prometheus 指标采集（metrics 聚合）
+# 用法：docker compose -f docker-compose.yml -f docker-compose.metrics.yml up -d
+# 打开 http://localhost:9090 查询 wangdachui_* 指标
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: wangdachui-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
