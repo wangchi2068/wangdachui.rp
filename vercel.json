@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "framework": "node"
+  "framework": "node",
+  "functions": {
+    "src/server.ts": {
+      "maxDuration": 60
+    }
+  }
 }

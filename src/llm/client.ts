@@ -151,6 +151,7 @@ export class LlmClient {
 							lastErr = new ApiError(res.status, await resCloneBody(res));
 						} else if (
 							res.status === 401 ||
+							res.status === 402 ||
 							res.status === 403 ||
 							res.status === 404
 						) {

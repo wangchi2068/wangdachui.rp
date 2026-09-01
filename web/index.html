@@ -2,308 +2,1246 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>wangdachui.pi · 角色扮演 Agent</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>诡秘之主 · 命运织机 | 沉浸式跑团与文字冒险引擎</title>
 <style>
   :root {
-    --bg: #0f1117; --panel: #161a23; --panel2: #1d2330; --border: #2a3142;
-    --text: #e6e9f0; --dim: #8b93a7; --accent: #7c9cff; --user: #3b4256;
-    --assistant: #1d2330; --ok: #4ade80; --err: #f87171; --card: #2c2a3e;
+    --bg-abyss: #07090e;
+    --bg-space: #0c0f17;
+    --bg-panel: #121622;
+    --bg-panel-subtle: #171d2c;
+    --bg-card: #1c2233;
+    --border-brass: #2d364a;
+    --border-gold: #8d733e;
+    --brass-gold: #d8b26e;
+    --brass-light: #f3dfb2;
+    --brass-glow: rgba(216, 178, 110, 0.22);
+    --crimson-moon: #e63956;
+    --crimson-glow: rgba(230, 57, 86, 0.32);
+    --amethyst-fog: #a78bfa;
+    --fog-glow: rgba(167, 139, 250, 0.25);
+    --emerald-ok: #34d399;
+    --text-main: #edf2f7;
+    --text-muted: #94a3b8;
+    --text-dark: #64748b;
+    --user-bubble: #1e2638;
+    --assistant-bubble: #121622;
+    --font-serif: "Cinzel", "Playfair Display", "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, Georgia, serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", Consolas, monospace;
   }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: "PingFang SC","Microsoft YaHei",system-ui,sans-serif; height: 100vh; overflow: hidden; }
-  #app { display: flex; height: 100vh; }
-  main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  header { padding: 10px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; }
-  header .title { font-weight: 700; letter-spacing: 1px; }
-  header .chip { font-size: 12px; color: var(--dim); background: var(--panel); border: 1px solid var(--border); padding: 2px 10px; border-radius: 999px; }
-  #messages { flex: 1; overflow-y: auto; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
-  .msg { max-width: 80%; padding: 11px 16px; border-radius: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; font-size: 14.5px; }
-  .msg.user { align-self: flex-end; background: var(--user); border-bottom-right-radius: 4px; }
-  .msg.assistant { align-self: flex-start; background: var(--assistant); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
-  .msg .meta { font-size: 11px; color: var(--dim); margin-bottom: 5px; opacity: .85; }
-  .msg .meta .time { margin-left: 8px; opacity: .6; font-size: 10px; }
-  .tools { align-self: flex-start; font-size: 12px; color: var(--dim); display: flex; gap: 6px; flex-wrap: wrap; }
-  .tools span { background: var(--panel2); border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px; }
-  .tools .ok { color: var(--ok); } .tools .err { color: var(--err); }
-  .tools-detail {
-    flex-basis: 100%; background: var(--panel2); border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.6;
-    white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow-y: auto;
-    font-family: Consolas, monospace; color: var(--dim);
+  
+  body {
+    background-color: var(--bg-abyss);
+    background-image: 
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(167, 139, 250, 0.09), transparent),
+      radial-gradient(ellipse 60% 40% at 95% 95%, rgba(230, 57, 86, 0.05), transparent),
+      linear-gradient(180deg, #07090e 0%, #090c13 100%);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    height: 100vh;
+    overflow: hidden;
+    letter-spacing: 0.01em;
   }
-  .card-box { align-self: center; width: 92%; max-width: 560px; background: var(--card); border: 1px solid #4a4766; border-radius: 14px; padding: 16px; }
-  .card-box .q { font-weight: 700; margin-bottom: 4px; }
-  .card-box .r { font-size: 13px; color: var(--dim); margin-bottom: 10px; }
-  .card-box .opt { display: block; width: 100%; text-align: left; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 9px 12px; border-radius: 8px; margin-top: 8px; cursor: pointer; font-size: 14px; }
-  .card-box .opt:hover { border-color: var(--accent); }
-  .card-box input[type=text] { width: 100%; margin-top: 8px; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 8px; }
-  .warn { align-self: center; color: #fbbf24; font-size: 13px; }
-  .composer { display: flex; flex-direction: column; gap: 8px; padding: 12px 18px 14px; border-top: 1px solid var(--border); }
-  .composer .row { display: flex; gap: 10px; }
-  #quickCmd { display: flex; gap: 6px; flex-wrap: wrap; }
-  #quickCmd button { background: var(--panel2); border: 1px solid var(--border); color: var(--dim); border-radius: 999px; padding: 3px 12px; cursor: pointer; font-size: 12px; transition: all .15s; }
-  #quickCmd button:hover { border-color: var(--accent); color: var(--text); }
-  #input { flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 11px 14px; font-size: 14.5px; resize: none; outline: none; }
-  #input:focus { border-color: var(--accent); }
-  #send { background: var(--accent); border: none; color: #0b0d12; font-weight: 700; border-radius: 10px; padding: 0 24px; cursor: pointer; }
-  #send:disabled { opacity: .5; cursor: not-allowed; }
-  #send.busy { background: var(--panel2); color: var(--dim); border: 1px solid var(--border); }
-  #send.busy::after { content: "…"; animation: blink 1s infinite; }
-  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .2; } }
-  .empty-tip { align-self: center; text-align: center; margin-top: 12vh; color: var(--dim); max-width: 420px; line-height: 1.8; }
-  .empty-tip .big { font-size: 17px; color: var(--text); margin-bottom: 8px; }
-  .empty-tip .cmd { display: inline-block; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 8px; margin: 2px; font-size: 12px; color: var(--text); }
-  aside { width: 320px; border-left: 1px solid var(--border); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; background: var(--panel); }
-  .sec { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
-  .sec h3 { font-size: 13px; color: var(--dim); margin-bottom: 8px; display: flex; justify-content: space-between; }
-  .sec ul { list-style: none; font-size: 13px; line-height: 1.6; }
-  .sec li { border-bottom: 1px dashed var(--border); padding: 4px 0; }
-  .sec li:last-child { border-bottom: none; }
-  .sec .label { color: var(--accent); margin-right: 6px; }
-  #uploadBtn { width: 100%; background: var(--panel2); border: 1px dashed var(--border); color: var(--dim); padding: 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
-  #uploadBtn:hover { border-color: var(--accent); color: var(--text); }
-  .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; color: var(--dim); }
-  .stat-row b { color: var(--text); font-weight: 600; }
-  #summary { font-size: 12px; color: var(--dim); line-height: 1.6; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
 
-  /* ===== 沉浸动效 ===== */
-  /* 消息入场：从黑暗中浮现 */
-  @keyframes msgIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-  .msg { animation: msgIn .28s ease; }
-  .card-box, .roll-box { animation: msgIn .28s ease; }
-  /* 用户/剧情小徽标 */
-  .msg { position: relative; }
+  /* 细致维多利亚古典复古滚动条 */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: rgba(10, 13, 20, 0.6); }
+  ::-webkit-scrollbar-thumb { background: #283347; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--brass-gold); }
+
+  #app { display: flex; height: 100vh; width: 100vw; position: relative; }
+  main { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100%; position: relative; }
+
+  /* ───── 顶栏：命运罗盘与灵性天平 ───── */
+  header {
+    height: 58px;
+    padding: 0 20px;
+    background: rgba(18, 22, 34, 0.85);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border-brass);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    z-index: 30;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    user-select: none;
+  }
+  .brand-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: radial-gradient(circle at 30% 30%, #4a3e20, #1b1710);
+    border: 1px solid var(--brass-gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--brass-light);
+    font-size: 16px;
+    box-shadow: 0 0 12px var(--brass-glow);
+  }
+  .brand-text { display: flex; flex-direction: column; }
+  .brand-title {
+    font-family: var(--font-serif);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--brass-light);
+    letter-spacing: 1.5px;
+    text-shadow: 0 0 8px var(--brass-glow);
+  }
+  .brand-sub {
+    font-size: 11px;
+    color: var(--text-dark);
+    letter-spacing: 0.5px;
+  }
+
+  /* 顶部状态胶囊与芯片 */
+  .meta-chips {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 6px;
+  }
+  .chip {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-panel-subtle);
+    border: 1px solid var(--border-brass);
+    padding: 3px 10px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+  }
+  .chip.active-phase {
+    color: var(--brass-gold);
+    border-color: rgba(216, 178, 110, 0.4);
+    background: rgba(216, 178, 110, 0.08);
+    cursor: pointer;
+  }
+  .chip.active-phase:hover {
+    border-color: var(--brass-gold);
+    box-shadow: 0 0 10px var(--brass-glow);
+  }
+
+  /* 灵性负荷计 (Spirituality Gauge) */
+  .spirit-meter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(14, 18, 27, 0.8);
+    border: 1px solid var(--border-brass);
+    border-radius: 999px;
+    padding: 2px 10px 2px 8px;
+    font-size: 11.5px;
+  }
+  .spirit-bar-bg {
+    width: 60px;
+    height: 6px;
+    background: #171d2b;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .spirit-bar-fill {
+    height: 100%;
+    width: 12%;
+    background: linear-gradient(90deg, var(--amethyst-fog), var(--brass-gold));
+    border-radius: 3px;
+    transition: width 0.4s ease, background 0.4s ease;
+  }
+
+  /* 顶栏控制按钮 */
+  .top-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .action-btn {
+    background: var(--bg-panel-subtle);
+    border: 1px solid var(--border-brass);
+    color: var(--text-muted);
+    border-radius: 8px;
+    padding: 6px 13px;
+    cursor: pointer;
+    font-size: 12.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.2s;
+  }
+  .action-btn:hover {
+    border-color: var(--brass-gold);
+    color: var(--text-main);
+    box-shadow: 0 0 10px var(--brass-glow);
+  }
+  .action-btn.primary {
+    background: linear-gradient(135deg, rgba(216, 178, 110, 0.18), rgba(167, 139, 250, 0.12));
+    border-color: var(--brass-gold);
+    color: var(--brass-light);
+  }
+  .action-btn.primary:hover {
+    background: linear-gradient(135deg, rgba(216, 178, 110, 0.3), rgba(167, 139, 250, 0.2));
+  }
+
+  /* 全局灵性微光流 */
+  #ctxBarWrap { height: 2px; width: 100%; background: transparent; position: relative; }
+  #ctxBar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--amethyst-fog), var(--brass-gold)); transition: width 0.4s; box-shadow: 0 0 8px var(--brass-glow); }
+
+  /* ───── 叙事大厅与对话流 ───── */
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 26px 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    scroll-behavior: smooth;
+  }
+
+  /* 故事开场仪式卡 */
+  .arc-intro-banner {
+    align-self: center;
+    width: 100%;
+    max-width: 720px;
+    background: radial-gradient(ellipse at 50% 0%, rgba(167, 139, 250, 0.1), transparent 70%), var(--bg-panel);
+    border: 1px solid var(--border-gold);
+    border-radius: 16px;
+    padding: 24px 30px;
+    text-align: center;
+    position: relative;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 20px rgba(216, 178, 110, 0.1);
+    margin-bottom: 8px;
+    animation: fadeIn .6s ease;
+  }
+  .arc-intro-banner::before {
+    content: "✦ THE FOOL · 愚者 ✦";
+    display: inline-block;
+    font-family: var(--font-serif);
+    font-size: 11px;
+    color: var(--brass-gold);
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+  .arc-intro-title {
+    font-family: var(--font-serif);
+    font-size: 21px;
+    font-weight: 700;
+    color: var(--brass-light);
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .arc-intro-desc {
+    font-size: 13.5px;
+    line-height: 1.8;
+    color: var(--text-muted);
+    max-width: 600px;
+    margin: 0 auto 16px;
+  }
+  .arc-intro-hints {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .arc-intro-hint {
+    background: rgba(23, 29, 44, 0.9);
+    border: 1px dashed var(--border-brass);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+
+  /* 消息气泡架构 */
+  .msg {
+    max-width: 82%;
+    padding: 18px 22px;
+    border-radius: 16px;
+    line-height: 1.8;
+    font-size: 15px;
+    position: relative;
+    word-break: break-word;
+    animation: msgAppear 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes msgAppear {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* 玩家独白（克莱恩） */
+  .msg.user {
+    align-self: flex-end;
+    background: linear-gradient(145deg, #1b2333, #151b27);
+    border: 1px solid #3b4661;
+    border-bottom-right-radius: 4px;
+    color: #f8fafc;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+  .msg.user .meta {
+    justify-content: flex-end;
+    color: var(--brass-gold);
+  }
+  .msg.user .badge {
+    right: -10px;
+    top: -10px;
+    background: linear-gradient(135deg, #374151, #1f2937);
+    border: 2px solid var(--brass-gold);
+    color: var(--brass-light);
+  }
+
+  /* 叙述者 / 世界（旁白） */
+  .msg.assistant {
+    align-self: flex-start;
+    background: linear-gradient(180deg, rgba(21, 26, 38, 0.95), rgba(16, 20, 31, 0.95));
+    border: 1px solid var(--border-brass);
+    border-left: 3px solid var(--brass-gold);
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    color: #e2e8f0;
+  }
+  .msg.assistant .meta {
+    color: var(--amethyst-fog);
+  }
+  .msg.assistant .badge {
+    left: -10px;
+    top: -10px;
+    background: radial-gradient(circle, #2d2645, #161225);
+    border: 2px solid var(--amethyst-fog);
+    color: var(--amethyst-fog);
+  }
+
   .msg .badge {
-    position: absolute; top: -9px; width: 22px; height: 22px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; border: 2px solid var(--bg);
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
   }
-  .msg.user .badge { right: 10px; background: var(--user); color: var(--dim); }
-  .msg.assistant .badge { left: 10px; background: var(--assistant); color: var(--accent); }
-  /* 打字指示器：三点跳动 */
-  .msg.typing { max-width: 90px; padding: 14px 18px; }
-  .dots { display: flex; gap: 5px; align-items: center; justify-content: center; }
-  .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: inline-block; animation: dotBlink 1.2s infinite ease-in-out; }
-  .dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
-  @keyframes dotBlink { 0%,80%,100% { opacity: .2; transform: scale(.8); } 40% { opacity: 1; transform: scale(1.1); } }
-  /* 回到底部药丸 */
-  #scrollToBottom {
-    position: fixed; right: 18px; bottom: 96px; z-index: 40;
-    background: var(--panel2); border: 1px solid var(--border); color: var(--dim);
-    border-radius: 999px; padding: 8px 14px; cursor: pointer; font-size: 12px;
-    box-shadow: 0 4px 16px rgba(0,0,0,.4); display: none; transition: opacity .2s;
-  }
-  #scrollToBottom:hover { color: var(--text); border-color: var(--accent); }
-  @media (max-width: 768px) { #scrollToBottom { bottom: 110px; right: 12px; } }
 
-  /* ===== 掷骰卡（BG3 式玩家投掷） ===== */  .roll-box { align-self: center; width: 92%; max-width: 420px; background: var(--card); border: 1px solid #4a4766; border-radius: 14px; padding: 18px; text-align: center; }
-  .roll-box .rq { font-weight: 700; font-size: 16px; margin-bottom: 2px; }
-  .roll-box .rr { font-size: 13px; color: var(--dim); margin-bottom: 12px; }
-  .roll-math { font-size: 14px; color: var(--dim); margin-bottom: 14px; letter-spacing: .5px; }
-  .roll-math b { color: var(--text); }
-  /* 骰子本体 */
-  .dice { width: 72px; height: 72px; margin: 0 auto 14px; position: relative; }
-  .dice .face {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 34px; font-weight: 800; color: #fff; border-radius: 14px;
-    background: linear-gradient(145deg, #4a4f68, #2c3148); border: 2px solid #5a6080;
-    box-shadow: 0 6px 18px rgba(0,0,0,.4); user-select: none;
+  .msg .meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+    font-family: var(--font-serif);
   }
-  .dice.rolling .face { animation: diceRoll .9s cubic-bezier(.3,.7,.4,1) infinite; }
-  @keyframes diceRoll {
-    0% { transform: rotate(0deg) scale(1); }
-    25% { transform: rotate(90deg) scale(1.12); }
-    50% { transform: rotate(180deg) scale(.95); }
-    75% { transform: rotate(270deg) scale(1.1); }
-    100% { transform: rotate(360deg) scale(1); }
+  .msg .meta .time {
+    font-family: var(--font-mono);
+    color: var(--text-dark);
+    font-size: 10px;
   }
-  .dice .face.big { font-size: 44px; }
-  .dice .face.good { background: linear-gradient(145deg, #2f6b4a, #1d4a33); border-color: #4ade80; }
-  .dice .face.bad { background: linear-gradient(145deg, #7a3030, #4a1d1d); border-color: #f87171; }
-  /* 落地回弹 + 辉光 */
-  .dice .face.impact { animation: diceImpact .45s cubic-bezier(.2,1.4,.4,1); }
-  @keyframes diceImpact {
-    0% { transform: scale(1.3); box-shadow: 0 0 24px var(--accent); }
-    60% { transform: scale(.94); }
-    100% { transform: scale(1); }
+
+  .msg-body {
+    white-space: pre-wrap;
+    letter-spacing: 0.02em;
   }
-  .dice .face.good.impact { animation-name: diceImpactGood; }
-  .dice .face.bad.impact { animation-name: diceImpactBad; }
-  @keyframes diceImpactGood { 0% { transform: scale(1.35); box-shadow: 0 0 30px #4ade80; } 60% { transform: scale(.94); } 100% { transform: scale(1); } }
-  @keyframes diceImpactBad { 0% { transform: scale(1.35); box-shadow: 0 0 30px #f87171; } 60% { transform: scale(.94); } 100% { transform: scale(1); } }
-  /* crit 震屏 */
-  #messages.shake { animation: screenShake .3s ease; }
-  @keyframes screenShake {
-    0%,100% { transform: translateX(0); }
-    20% { transform: translateX(-4px); } 40% { transform: translateX(4px); }
-    60% { transform: translateX(-3px); } 80% { transform: translateX(3px); }
+  /* 段落强调感与微排版 */
+  .msg.assistant .msg-body strong {
+    color: var(--brass-light);
+    font-weight: 600;
   }
-  /* 结果行 */
-  .roll-result { font-size: 15px; font-weight: 600; margin-top: 6px; min-height: 24px; }
-  .roll-result .succ { color: var(--ok); }
-  .roll-result .fail { color: var(--err); }
-  /* 投掷按钮 */
+
+  /* 灵视打字机动画 */
+  .msg.typing {
+    max-width: 120px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mystic-pulse {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .mystic-pulse span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--brass-gold);
+    display: inline-block;
+    box-shadow: 0 0 8px var(--brass-gold);
+    animation: mysticPulse 1.4s infinite ease-in-out;
+  }
+  .mystic-pulse span:nth-child(2) { animation-delay: .2s; background: var(--amethyst-fog); box-shadow: 0 0 8px var(--amethyst-fog); }
+  .mystic-pulse span:nth-child(3) { animation-delay: .4s; background: var(--crimson-moon); box-shadow: 0 0 8px var(--crimson-moon); }
+  @keyframes mysticPulse {
+    0%, 80%, 100% { opacity: 0.2; transform: scale(0.7); }
+    40% { opacity: 1; transform: scale(1.15); }
+  }
+
+  /* 工具调用卡片（灵视与判定） */
+  .tools-container {
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: -6px 0 4px 6px;
+  }
+  .tools-pill-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .tool-badge {
+    background: rgba(22, 28, 42, 0.85);
+    border: 1px solid var(--border-brass);
+    color: var(--text-muted);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    font-family: var(--font-mono);
+  }
+  .tool-badge:hover {
+    border-color: var(--brass-gold);
+    color: var(--text-main);
+  }
+  .tool-badge.ok { border-color: rgba(52, 211, 153, 0.4); color: #86efac; }
+  .tool-badge.err { border-color: rgba(248, 113, 113, 0.4); color: #fca5a5; }
+  .tool-detail-box {
+    background: #0d111a;
+    border: 1px solid var(--border-brass);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: #cbd5e1;
+    line-height: 1.6;
+    max-width: 600px;
+    white-space: pre-wrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  }
+
+  /* ───── 命运抉择卡（Tarot Decision Cards） ───── */
+  .card-box {
+    align-self: center;
+    width: 95%;
+    max-width: 620px;
+    background: radial-gradient(circle at 50% 0%, rgba(167, 139, 250, 0.12), transparent 70%), var(--bg-card);
+    border: 1px solid var(--border-gold);
+    border-radius: 18px;
+    padding: 22px 24px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(216, 178, 110, 0.12);
+    animation: cardZoomIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes cardZoomIn {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .card-box .q-title {
+    font-family: var(--font-serif);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--brass-light);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .card-box .q-reason {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin-bottom: 14px;
+    padding-left: 2px;
+  }
+  .card-box .options-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+  .card-box .opt-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    text-align: left;
+    background: rgba(22, 28, 42, 0.7);
+    border: 1px solid var(--border-brass);
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: var(--text-main);
+    cursor: pointer;
+    font-size: 14.5px;
+    line-height: 1.5;
+    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  .card-box .opt-btn:hover, .card-box .opt-btn:focus {
+    background: rgba(33, 42, 64, 0.9);
+    border-color: var(--brass-gold);
+    transform: translateX(4px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px var(--brass-glow);
+    outline: none;
+  }
+  .card-box .opt-key {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: rgba(216, 178, 110, 0.15);
+    border: 1px solid var(--brass-gold);
+    color: var(--brass-light);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .card-box .opt-custom-input {
+    width: 100%;
+    margin-top: 12px;
+    background: rgba(14, 18, 28, 0.8);
+    border: 1px solid var(--border-brass);
+    border-radius: 10px;
+    color: var(--text-main);
+    padding: 11px 14px;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s;
+  }
+  .card-box .opt-custom-input:focus {
+    border-color: var(--amethyst-fog);
+    box-shadow: 0 0 12px var(--fog-glow);
+  }
+
+  /* ───── 3D 命运 D20 掷骰卡 (The Die of Fate) ───── */
+  .roll-box {
+    align-self: center;
+    width: 95%;
+    max-width: 480px;
+    background: radial-gradient(ellipse at 50% 20%, rgba(216, 178, 110, 0.15), transparent 75%), var(--bg-card);
+    border: 1px solid var(--border-gold);
+    border-radius: 20px;
+    padding: 26px 24px;
+    text-align: center;
+    box-shadow: 0 20px 48px rgba(0,0,0,0.6), 0 0 30px var(--brass-glow);
+    animation: cardZoomIn 0.35s ease;
+  }
+  .roll-box .rq {
+    font-family: var(--font-serif);
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--brass-light);
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .roll-box .rr {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+  }
+  .roll-math {
+    font-family: var(--font-mono);
+    font-size: 14.5px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+  }
+  .roll-math b { color: var(--brass-light); }
+
+  /* 3D 仿真二十面体骰子 */
+  .dice-stage {
+    perspective: 800px;
+    width: 90px;
+    height: 90px;
+    margin: 0 auto 16px;
+  }
+  .dice-d20 {
+    width: 90px;
+    height: 90px;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.5s;
+  }
+  .dice-face {
+    width: 90px;
+    height: 90px;
+    border-radius: 18px;
+    background: radial-gradient(circle at 35% 35%, #594723, #231c0e);
+    border: 2px solid var(--brass-gold);
+    box-shadow: inset 0 0 16px rgba(0,0,0,0.6), 0 8px 24px rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-serif);
+    font-size: 42px;
+    font-weight: 800;
+    color: var(--brass-light);
+    user-select: none;
+  }
+  .dice-d20.rolling .dice-face {
+    animation: rollSpin 0.6s infinite linear;
+  }
+  @keyframes rollSpin {
+    0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1); }
+    50% { transform: rotateX(180deg) rotateY(180deg) rotateZ(90deg) scale(1.08); }
+    100% { transform: rotateX(360deg) rotateY(360deg) rotateZ(180deg) scale(1); }
+  }
+  .dice-face.nat20 {
+    background: radial-gradient(circle at 40% 40%, #c99324, #614406);
+    border-color: #fef08a;
+    box-shadow: 0 0 35px rgba(254, 240, 138, 0.8);
+    color: #fffbeb;
+  }
+  .dice-face.nat1 {
+    background: radial-gradient(circle at 40% 40%, #991b1b, #450a0a);
+    border-color: #f87171;
+    box-shadow: 0 0 35px rgba(248, 113, 113, 0.7);
+    color: #fee2e2;
+  }
+  .dice-face.pass {
+    border-color: var(--emerald-ok);
+    box-shadow: 0 0 20px rgba(52, 211, 153, 0.4);
+  }
+  .dice-face.fail {
+    border-color: var(--crimson-moon);
+    box-shadow: 0 0 20px var(--crimson-glow);
+  }
+
+  .roll-result {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    min-height: 26px;
+    font-family: var(--font-serif);
+  }
+  .roll-result .succ { color: var(--emerald-ok); text-shadow: 0 0 10px rgba(52, 211, 153, 0.4); }
+  .roll-result .fail { color: var(--crimson-moon); text-shadow: 0 0 10px var(--crimson-glow); }
+
   #rollBtn {
-    margin-top: 14px; background: var(--accent); border: none; color: #0b0d12;
-    font-weight: 700; border-radius: 10px; padding: 12px 32px; cursor: pointer; font-size: 15px;
-    min-height: 46px; width: 100%; max-width: 240px; transition: opacity .15s;
+    background: linear-gradient(135deg, #d8b26e, #b88f44);
+    border: none;
+    color: #121008;
+    font-family: var(--font-serif);
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 1px;
+    border-radius: 12px;
+    padding: 14px 36px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(216, 178, 110, 0.3);
+    transition: all 0.2s;
+    width: 100%;
+    max-width: 260px;
   }
-  #rollBtn:disabled { opacity: .5; cursor: not-allowed; }
-  .roll-note { font-size: 12px; color: var(--dim); margin-top: 8px; }
+  #rollBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 26px rgba(216, 178, 110, 0.45);
+  }
+  #rollBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
 
-  /* ===== 移动端适配（诡秘之主 / 裂界 共用） ===== */
-  @media (max-width: 768px) {
-    body { height: 100dvh; overflow: hidden; }
-    #app { flex-direction: column; }
-    main { flex: 1; min-height: 0; }
-    /* 顶栏：窄屏下紧凑，标题省略、chips 只留角色 */
-    header { padding: 8px 10px; gap: 6px; flex-wrap: wrap; }
-    header .title { font-size: 13px; }
-    header .chip { font-size: 11px; padding: 2px 8px; }
-    #chipModel, #chipState { display: none; } /* 手机只留角色 chip，省空间 */
-    #newBtn { padding: 6px 10px; font-size: 12px; }
-    #exportBtn { padding: 6px 10px; font-size: 12px; }
-    /* 消息区：窄屏全宽 */
-    #messages { padding: 12px 10px; gap: 10px; }
-    .msg { max-width: 100%; font-size: 15px; padding: 10px 13px; line-height: 1.75; }
-    .card-box { width: 100%; max-width: 100%; padding: 14px 12px; }
-    .card-box .opt { padding: 12px 14px; font-size: 15px; margin-top: 10px; border-radius: 10px; }
-    .card-box input[type=text] { padding: 11px 14px; font-size: 15px; }
-    .roll-box { width: 100%; max-width: 100%; padding: 16px 14px; }
-    .dice { width: 62px; height: 62px; }
-    .dice .face { font-size: 28px; }
-    .dice .face.big { font-size: 38px; }
-    #rollBtn { max-width: 100%; min-height: 48px; }
-    .warn { font-size: 13px; }
-    /* 输入区：触控友好 */
-    .composer { padding: 8px 10px 10px; gap: 6px; }
-    .composer .row { gap: 8px; }
-    #input { font-size: 16px; padding: 12px 14px; min-height: 44px; } /* 16px 防 iOS 聚焦缩放 */
-    #send { min-width: 72px; min-height: 44px; font-size: 15px; padding: 0 16px; }
-    #quickCmd { gap: 5px; }
-    #quickCmd button { padding: 6px 10px; font-size: 12px; }
-    /* 侧栏：手机上收起为底部抽屉（点“状态”按钮展开） */
+  /* 震屏动效 */
+  #messages.shake { animation: screenShake 0.35s ease; }
+  @keyframes screenShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px) rotate(-0.5deg); }
+    40% { transform: translateX(6px) rotate(0.5deg); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+
+  /* 回到底部浮动胶囊 */
+  #scrollToBottom {
+    position: absolute;
+    right: 26px;
+    bottom: 110px;
+    z-index: 25;
+    background: rgba(22, 28, 42, 0.9);
+    border: 1px solid var(--brass-gold);
+    color: var(--brass-light);
+    border-radius: 999px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 12.5px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6), 0 0 14px var(--brass-glow);
+    display: none;
+    transition: all 0.2s;
+    backdrop-filter: blur(8px);
+  }
+  #scrollToBottom:hover {
+    transform: translateY(-2px);
+  }
+
+  /* ───── 底部输入台（克莱恩的决断台） ───── */
+  .composer-wrapper {
+    background: rgba(18, 22, 34, 0.9);
+    border-top: 1px solid var(--border-brass);
+    padding: 12px 24px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    backdrop-filter: blur(16px);
+    z-index: 20;
+  }
+
+  /* 行动灵感药丸栏 */
+  .inspiration-bar {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .inspiration-pill {
+    background: var(--bg-panel-subtle);
+    border: 1px solid var(--border-brass);
+    color: var(--text-muted);
+    border-radius: 999px;
+    padding: 4px 13px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .inspiration-pill:hover {
+    border-color: var(--brass-gold);
+    color: var(--brass-light);
+    background: rgba(216, 178, 110, 0.08);
+  }
+  .inspiration-pill.dynamic-pill {
+    animation: pillSlideIn 0.35s ease;
+    border-color: rgba(216, 178, 110, 0.45);
+    background: rgba(216, 178, 110, 0.08);
+    color: var(--brass-light);
+  }
+  .inspiration-pill.dynamic-pill:hover {
+    border-color: var(--brass-gold);
+    background: rgba(216, 178, 110, 0.2);
+    box-shadow: 0 0 12px var(--brass-glow);
+  }
+  @keyframes pillSlideIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 输入与发送组合行 */
+  .input-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+  }
+  .input-box-container {
+    flex: 1;
+    position: relative;
+  }
+  #input {
+    width: 100%;
+    background: rgba(12, 16, 26, 0.85);
+    border: 1px solid var(--border-brass);
+    border-radius: 12px;
+    color: var(--text-main);
+    padding: 12px 16px;
+    font-size: 15px;
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+    transition: all 0.2s;
+    min-height: 48px;
+    max-height: 160px;
+    font-family: inherit;
+  }
+  #input:focus {
+    border-color: var(--brass-gold);
+    box-shadow: 0 0 16px var(--brass-glow);
+    background: rgba(14, 18, 30, 0.95);
+  }
+  #input::placeholder {
+    color: var(--text-dark);
+  }
+
+  #send {
+    background: linear-gradient(135deg, #d8b26e, #b88f44);
+    border: none;
+    color: #0d0f17;
+    font-family: var(--font-serif);
+    font-weight: 700;
+    font-size: 14.5px;
+    border-radius: 12px;
+    height: 48px;
+    padding: 0 24px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-shadow: 0 4px 14px rgba(216, 178, 110, 0.25);
+    flex-shrink: 0;
+  }
+  #send:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(216, 178, 110, 0.35);
+  }
+  #send:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+  #send.busy {
+    background: rgba(230, 57, 86, 0.15);
+    border: 1px solid var(--crimson-moon);
+    color: #fca5a5;
+    box-shadow: 0 0 14px var(--crimson-glow);
+  }
+
+  /* ───── 右侧手账：调查纪要与隐秘账本 (Journal Tabs) ───── */
+  aside {
+    width: 360px;
+    background: var(--bg-space);
+    border-left: 1px solid var(--border-brass);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    z-index: 25;
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* 手账顶栏标签 */
+  .journal-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-brass);
+    background: rgba(18, 22, 34, 0.6);
+  }
+  .journal-title {
+    font-family: var(--font-serif);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--brass-light);
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .journal-tabs {
+    display: flex;
+    gap: 4px;
+    background: rgba(12, 15, 23, 0.8);
+    border-radius: 8px;
+    padding: 3px;
+    border: 1px solid var(--border-brass);
+  }
+  .journal-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    border-radius: 6px;
+    padding: 6px 0;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+  .journal-tab.active {
+    background: var(--bg-card);
+    color: var(--brass-light);
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  .journal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .journal-panel {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .journal-panel.active { display: flex; }
+
+  .j-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-brass);
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  }
+  .j-card-title {
+    font-family: var(--font-serif);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--brass-gold);
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* 人物册群像卡 */
+  .roster-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .character-card {
+    background: rgba(22, 28, 42, 0.7);
+    border: 1px solid var(--border-brass);
+    border-radius: 10px;
+    padding: 10px 12px;
+    transition: all 0.2s;
+  }
+  .character-card:hover {
+    border-color: rgba(216, 178, 110, 0.5);
+    background: rgba(26, 33, 50, 0.85);
+  }
+  .char-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .char-name {
+    font-weight: 700;
+    font-size: 13.5px;
+    color: #f1f5f9;
+  }
+  .char-status {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(52, 211, 153, 0.15);
+    color: #6ee7b7;
+    border: 1px solid rgba(52, 211, 153, 0.3);
+  }
+  .char-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  /* 隐秘账本条目 */
+  .ledger-section-title {
+    font-size: 12px;
+    color: var(--amethyst-fog);
+    font-weight: 600;
+    margin: 8px 0 4px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .ledger-item-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ledger-item {
+    background: rgba(14, 18, 28, 0.6);
+    border: 1px solid #232a3d;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .ledger-key {
+    color: var(--brass-gold);
+    font-weight: 600;
+    margin-right: 6px;
+  }
+
+  /* 提示警报条 */
+  .warn-banner {
+    align-self: center;
+    background: rgba(30, 20, 15, 0.85);
+    border: 1px solid #78350f;
+    border-left: 3px solid #f59e0b;
+    border-radius: 8px;
+    padding: 8px 16px;
+    color: #fef3c7;
+    font-size: 13px;
+    max-width: 85%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    animation: fadeIn .3s ease;
+  }
+
+  /* 移动端遮罩与抽屉手柄 */
+  .aside-mask { display: none; }
+
+  @media (max-width: 840px) {
+    header { padding: 0 12px; gap: 8px; }
+    .brand-sub, #chipModel, #chipState { display: none; }
+    #messages { padding: 16px 14px; gap: 16px; }
+    .msg { max-width: 92%; font-size: 14.5px; padding: 14px 16px; }
+    .composer-wrapper { padding: 10px 12px 14px; }
+    #asideToggle { display: inline-flex !important; }
     aside {
-      position: fixed; left: 0; right: 0; bottom: 0; top: auto;
-      width: 100%; max-height: 55dvh; border-left: none; border-top: 1px solid var(--border);
-      transform: translateY(100%); transition: transform .25s ease;
-      z-index: 60; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.5);
-      overflow-y: auto;
+      position: fixed;
+      left: 0; right: 0; bottom: 0; top: auto;
+      width: 100%;
+      height: 65vh;
+      max-height: 65vh;
+      border-left: none;
+      border-top: 1px solid var(--border-gold);
+      transform: translateY(100%);
+      z-index: 60;
+      border-radius: 20px 20px 0 0;
+      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.7);
     }
     aside.open { transform: translateY(0); }
-    /* 抽屉拉手 */
-    aside::before {
-      content: ""; display: block; width: 44px; height: 4px; border-radius: 999px;
-      background: var(--border); margin: 6px auto 2px;
+    .aside-mask.show {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 55;
     }
-    /* 顶栏加“状态”按钮（手机上展开侧栏） */
-    #asideToggle {
-      display: inline-block !important;
-      background: var(--panel2); border: 1px solid var(--border); color: var(--dim);
-      border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px;
-    }
-    /* 点暗层关抽屉 */
-    .aside-mask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 55; }
-    .aside-mask.show { display: block; }
-    .empty-tip { margin-top: 8vh; font-size: 14px; }
   }
-  /* 桌面默认隐藏“状态”按钮和遮罩 */
+
   #asideToggle { display: none; }
-  .aside-mask { display: none; }
 </style>
 </head>
 <body>
+
 <div id="app">
   <main>
+    <!-- 顶栏：命运罗盘 -->
     <header>
-      <span class="title">✦ wangdachui.pi</span>
-      <span class="chip" id="chipCard">角色：—</span>
-      <span class="chip" id="chipModel">模型：—</span>
-      <span class="chip" id="chipState">窗口 —/—</span>
-      <button id="newBtn" title="清空当前对话，重新开场" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:8px;padding:4px 12px;cursor:pointer;font-size:12px;">＋ 新建对话</button>
-      <button id="asideToggle" title="状态面板">☰ 状态</button>
-      <div style="position:relative;" id="exportWrap">
-        <button id="exportBtn" title="导出本次对话" style="background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:8px;padding:4px 12px;cursor:pointer;font-size:12px;">⬇ 导出</button>
-        <div id="exportMenu" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;">
-          <button data-fmt="md" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;">📄 Markdown (.md)</button>
-          <button data-fmt="doc" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;">📝 Word (.doc)</button>
+      <div class="brand-group">
+        <div class="brand-icon">✦</div>
+        <div class="brand-text">
+          <span class="brand-title">命运织机</span>
+          <span class="brand-sub">诡秘之主 · 廷根篇</span>
+        </div>
+      </div>
+
+      <div class="meta-chips">
+        <div class="chip active-phase" id="chipArcBadge" title="点击查看主线目标">
+          <span>🏛️</span>
+          <span id="chipArcText">第一幕 · 廷根的占卜家</span>
+        </div>
+        <div class="chip" id="chipCard" title="当前角色身份">克莱恩·莫雷蒂</div>
+        <div class="chip" id="chipModel" title="驱动模型">模型：—</div>
+        
+        <!-- 灵性负荷计 (上下文用量) -->
+        <div class="spirit-meter" title="灵性负荷 / 上下文预算">
+          <span>🔮 灵性</span>
+          <div class="spirit-bar-bg">
+            <div class="spirit-bar-fill" id="spiritFill"></div>
+          </div>
+          <span id="spiritRatio" style="font-family:var(--font-mono);color:var(--brass-light);">0%</span>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <button class="action-btn" id="newBtn" title="开启新轮回（重置对话与主线）">＋ 新轮回</button>
+        <button class="action-btn" id="asideToggle" title="展开手账">📖 调查手记</button>
+        
+        <!-- 导出菜单 -->
+        <div style="position:relative;" id="exportWrap">
+          <button class="action-btn" id="exportBtn" title="导出对话记录">⬇ 导出手账</button>
+          <div id="exportMenu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--bg-card);border:1px solid var(--border-gold);border-radius:10px;padding:6px;z-index:50;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,0.6);">
+            <button data-fmt="md" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text-main);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px;">📜 Markdown (.md)</button>
+            <button data-fmt="doc" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text-main);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px;">📖 Word 手记 (.doc)</button>
+          </div>
         </div>
       </div>
     </header>
-    <div id="ctxBarWrap" style="height:3px;background:transparent;"><div id="ctxBar" style="height:100%;width:0%;background:var(--accent);transition:width .4s;"></div></div>
+
+    <div id="ctxBarWrap"><div id="ctxBar"></div></div>
+
+    <!-- 叙事对话流 -->
     <div id="messages">
-      <div class="empty-tip" id="emptyTip">
-        <div class="big">✦ 开始一段旅程</div>
-        <div>直接对角色说话，或试试快捷命令：</div>
-        <div style="margin-top:10px;">
-          <span class="cmd">/state</span><span class="cmd">/lore 词</span><span class="cmd">/snap</span><span class="cmd">/back</span><span class="cmd">/phase</span><span class="cmd">/help</span>
+      <!-- 初始欢迎卷轴 -->
+      <div class="arc-intro-banner" id="emptyTip">
+        <div class="arc-intro-title">灰雾之上 · 命运的苏醒</div>
+        <div class="arc-intro-desc">
+          煤气味混着潮湿晨雾从窗外涌入。你手里攥着罗塞尔的日记残页，脑海中掠过无边灰雾与巍峨神殿。<br>
+          直接输入你的行动或言语，窥视非凡世界的深渊与秘密：
+        </div>
+        <div class="arc-intro-hints">
+          <span class="arc-intro-hint">/phase 探查主线</span>
+          <span class="arc-intro-hint">/lore 占卜家</span>
+          <span class="arc-intro-hint">/lore 灰雾</span>
+          <span class="arc-intro-hint">/snap 铭刻存档</span>
+          <span class="arc-intro-hint">/help 秘术指南</span>
         </div>
       </div>
     </div>
-    <button id="scrollToBottom" onclick="smartScroll();">↓ 回到底部</button>
-    <div class="composer">
-      <div id="quickCmd">
-        <button data-cmd="/state">/state 状态</button>
-        <button data-cmd="/phase">/phase 主线</button>
-        <button data-cmd="/lore ">/lore 查设定</button>
-        <button data-cmd="/snap">/snap 存档</button>
-        <button data-cmd="/back">/back 回档</button>
-        <button data-cmd="/help">/help 帮助</button>
+
+    <!-- 回到底部悬浮球 -->
+    <button id="scrollToBottom" onclick="smartScroll(true);">↓ 回到最新篇章</button>
+
+    <!-- 底部克莱恩决断台 -->
+    <div class="composer-wrapper">
+      <!-- 行动灵感药丸 -->
+      <div class="inspiration-bar" id="quickCmd">
+        <button class="inspiration-pill" data-cmd="检查手中的罗塞尔日记残页">✦ 细读日记</button>
+        <button class="inspiration-pill" data-cmd="闭上双眼，尝试感知刚才掠过的灰雾">✦ 感知灰雾</button>
+        <button class="inspiration-pill" data-cmd="走出房门，去看看房东太太送来的信">✦ 开门取信</button>
+        <button class="inspiration-pill" data-cmd="/phase">🏛️ 主线目标</button>
+        <button class="inspiration-pill" data-cmd="/lore 廷根">🔍 探寻设定</button>
+        <button class="inspiration-pill" data-cmd="/snap">💾 命运存档</button>
+        <button class="inspiration-pill" data-cmd="/help">❓ 帮助指令</button>
       </div>
-      <div class="row">
-        <textarea id="input" rows="2" placeholder="对角色说话… 回车发送｜回一个字也能继续（如：1 / 去 / 不）"></textarea>
-        <button id="send">发送</button>
+
+      <!-- 输入框组合 -->
+      <div class="input-row">
+        <div class="input-box-container">
+          <textarea id="input" rows="1" placeholder="对世界宣告你的行动…（Enter 发送，Shift+Enter 换行；单字亦能推进）"></textarea>
+        </div>
+        <button id="send">
+          <span>投递决断</span>
+          <span style="font-size:12px;">↵</span>
+        </button>
       </div>
     </div>
   </main>
+
+  <!-- ───── 右侧手账：调查纪要与隐秘账本 ───── -->
   <aside>
-    <div class="sec">
-      <h3>角色卡</h3>
-      <input type="file" id="cardFile" accept=".json,.png" hidden>
-      <button id="uploadBtn">⬆ 上传角色卡（SillyTavern JSON）</button>
-    </div>
-    <div class="sec">
-      <h3>上下文统计</h3>
-      <div class="stat-row"><span>预算</span><b id="stBudget">—</b></div>
-      <div class="stat-row"><span>窗口 / 总回合</span><b id="stWindow">—</b></div>
-      <div class="stat-row"><span>本回合工具</span><b id="stTools">—</b></div>
-      <div class="stat-row"><span>本回合估算</span><b id="stTokens">—</b></div>
-    </div>
-    <div class="sec">
-      <h3>主线进度</h3>
-      <div id="mainline"><span style="color:var(--dim);font-size:13px">（加载中…）</span></div>
-    </div>
-    <div class="sec">
-      <h3>人物册（群像）</h3>
-      <div id="roster"><span style="color:var(--dim);font-size:13px">（还没有登记的角色）</span></div>
-    </div>
-    <div class="sec">
-      <h3>前情提要（压缩摘要）</h3>
-      <div id="summary">（暂无）</div>
-    </div>
-    <div class="sec">
-      <h3>世界状态账本</h3>
-      <div id="ledger"><span style="color:var(--dim);font-size:13px">（账本为空）</span></div>
-    </div>
-    <div class="sec">
-      <h3>世界线存档</h3>
-      <div style="display:flex;gap:6px;margin-bottom:8px;">
-        <input id="snapLabel" placeholder="存档名（可选）" style="flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 8px;font-size:12px;outline:none;">
-        <button id="snapBtn" style="background:var(--accent);border:none;color:#0b0d12;border-radius:6px;padding:0 12px;cursor:pointer;font-size:12px;">存</button>
+    <div class="journal-header">
+      <div class="journal-title">
+        <span>📖 廷根调查手账</span>
+        <span id="chipState" style="font-size:11px;color:var(--text-dark);font-family:var(--font-mono);">通灵连接中</span>
       </div>
-      <ul id="snapList" style="max-height:180px;overflow-y:auto;"></ul>
+      <div class="journal-tabs">
+        <button class="journal-tab active" data-tab="tab-arc">主线</button>
+        <button class="journal-tab" data-tab="tab-roster">人物</button>
+        <button class="journal-tab" data-tab="tab-ledger">账本</button>
+        <button class="journal-tab" data-tab="tab-chronicle">前情</button>
+        <button class="journal-tab" data-tab="tab-timeline">世界线</button>
+      </div>
+    </div>
+
+    <div class="journal-content">
+      <!-- 标签页 1：主线篇章 -->
+      <div class="journal-panel active" id="tab-arc">
+        <div class="j-card">
+          <div class="j-card-title">
+            <span>🏛️ 当前主线推进</span>
+            <span id="arcStepBadge" style="font-size:11px;color:var(--brass-gold);">第 1 幕</span>
+          </div>
+          <div id="mainline"><span style="color:var(--text-dark);font-size:12.5px;">（解析中…）</span></div>
+        </div>
+
+        <div class="j-card">
+          <div class="j-card-title"><span>🔮 灵性与能耗分析</span></div>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;">
+            <div style="display:flex;justify-content:space-between;color:var(--text-muted);">
+              <span>记忆预算上限</span><b id="stBudget" style="color:var(--text-main);font-family:var(--font-mono);">—</b>
+            </div>
+            <div style="display:flex;justify-content:space-between;color:var(--text-muted);">
+              <span>活动窗口 / 总回合</span><b id="stWindow" style="color:var(--text-main);font-family:var(--font-mono);">—</b>
+            </div>
+            <div style="display:flex;justify-content:space-between;color:var(--text-muted);">
+              <span>本轮工具调用</span><b id="stTools" style="color:var(--text-main);font-family:var(--font-mono);">—</b>
+            </div>
+            <div style="display:flex;justify-content:space-between;color:var(--text-muted);">
+              <span>本轮灵感消耗</span><b id="stTokens" style="color:var(--brass-light);font-family:var(--font-mono);">—</b>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 标签页 2：人物册群像 -->
+      <div class="journal-panel" id="tab-roster">
+        <div class="j-card">
+          <div class="j-card-title">
+            <span>👥 廷根人物录</span>
+            <span style="font-size:11px;color:var(--text-dark);">群像羁绊</span>
+          </div>
+          <div id="roster" class="roster-grid">
+            <span style="color:var(--text-dark);font-size:12.5px;">（尚无结识的非凡者或市民）</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 标签页 3：隐秘账本 -->
+      <div class="journal-panel" id="tab-ledger">
+        <div class="j-card">
+          <div class="j-card-title"><span>📜 非凡特性与暗线账本</span></div>
+          <div id="ledger"><span style="color:var(--text-dark);font-size:12.5px;">（隐秘账本为空）</span></div>
+        </div>
+      </div>
+
+      <!-- 标签页 4：前情提要 -->
+      <div class="journal-panel" id="tab-chronicle">
+        <div class="j-card">
+          <div class="j-card-title"><span>⏳ 前情提要 · 岁月折叠</span></div>
+          <div id="summary" style="font-size:13px;line-height:1.7;color:var(--text-muted);white-space:pre-wrap;">（暂无前情压缩记录）</div>
+        </div>
+      </div>
+
+      <!-- 标签页 5：世界线存档与回档 -->
+      <div class="journal-panel" id="tab-timeline">
+        <div class="j-card">
+          <div class="j-card-title"><span>🌌 铭刻命运时刻</span></div>
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <input id="snapLabel" placeholder="输入存档刻印名（可选）" style="flex:1;background:rgba(12,16,26,0.8);border:1px solid var(--border-brass);border-radius:8px;padding:8px 10px;color:var(--text-main);font-size:12.5px;outline:none;">
+            <button id="snapBtn" class="action-btn primary" style="padding:0 14px;">铭刻</button>
+          </div>
+          <ul id="snapList" style="list-style:none;display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;"></ul>
+        </div>
+
+        <div class="j-card">
+          <div class="j-card-title"><span>🎭 角色卡凭证</span></div>
+          <input type="file" id="cardFile" accept=".json,.png" hidden>
+          <button id="uploadBtn" class="action-btn" style="width:100%;justify-content:center;padding:10px;">⬆ 上传自制角色卡 (JSON / PNG)</button>
+        </div>
+      </div>
     </div>
   </aside>
+
   <div class="aside-mask" id="asideMask"></div>
 </div>
 
 <script>
 "use strict";
-const $ = (id) => document.getElementById(id);
-const els = { messages: $("messages"), input: $("input"), send: $("send"), cardFile: $("cardFile"), uploadBtn: $("uploadBtn") };
 
-// 移动端侧栏抽屉开关
+const $ = (id) => document.getElementById(id);
+const els = {
+  messages: $("messages"),
+  input: $("input"),
+  send: $("send"),
+  cardFile: $("cardFile"),
+  uploadBtn: $("uploadBtn")
+};
+
+// 移动端手账抽屉开关
 const aside = document.querySelector("aside");
 const asideToggle = $("asideToggle");
 const asideMask = $("asideMask");
@@ -311,303 +1249,404 @@ function openAside() { aside?.classList.add("open"); asideMask?.classList.add("s
 function closeAside() { aside?.classList.remove("open"); asideMask?.classList.remove("show"); }
 asideToggle?.addEventListener("click", () => aside?.classList.contains("open") ? closeAside() : openAside());
 asideMask?.addEventListener("click", closeAside);
-const LEDGER_LABEL = { characters: "人物", items: "物品", relations: "关系", plots: "伏笔", notes: "备注" };
+
+// 标签页切换逻辑
+const tabs = document.querySelectorAll(".journal-tab");
+const panels = document.querySelectorAll(".journal-panel");
+tabs.forEach(tab => {
+  tab.addEventListener("click", () => {
+    tabs.forEach(t => t.classList.remove("active"));
+    panels.forEach(p => p.classList.remove("active"));
+    tab.classList.add("active");
+    const target = $(tab.dataset.tab);
+    if (target) target.classList.add("active");
+  });
+});
+$("chipArcBadge")?.addEventListener("click", () => {
+  openAside();
+  const arcTab = document.querySelector('.journal-tab[data-tab="tab-arc"]');
+  if (arcTab) arcTab.click();
+});
+
+const LEDGER_LABEL = { characters: "人物群像", items: "非凡物品与封印物", relations: "势力与人物关系", plots: "伏笔与暗线", notes: "神秘学笔记" };
 let busy = false;
-let cardEl = null; // 正在等待选择的决策卡 DOM
-let streamingBubble = null; // 当前正在流式填充的正文气泡
+let cardEl = null;
+let streamingBubble = null;
+
 function clearTyping() {
   const t = document.querySelector(".msg.typing");
   if (t) t.remove();
 }
+
 function resetSendBtn() {
   busy = false; streamingBubble = null; clearTyping();
   if (wsTurnTimer) { clearTimeout(wsTurnTimer); wsTurnTimer = null; }
   els.send.disabled = false; els.input.disabled = false;
   els.send.classList.remove("busy");
-  els.send.textContent = "发送";
-  els.send.style.color = "";
-  els.send.style.border = "";
+  els.send.innerHTML = '<span>投递决断</span><span style="font-size:12px;">↵</span>';
 }
 
 function addMsg(role, text) {
   const div = document.createElement("div");
   div.className = "msg " + role;
+  
   const badge = document.createElement("div");
   badge.className = "badge";
-  badge.textContent = role === "user" ? "你" : "✦";
+  badge.textContent = role === "user" ? "克" : "✦";
   div.appendChild(badge);
+  
   const meta = document.createElement("div");
   meta.className = "meta";
-  meta.textContent = role === "user" ? "你" : "剧情";
+  meta.textContent = role === "user" ? "克莱恩·莫雷蒂" : "命运旁白 · 世界";
+  
   const now = new Date();
   const ts = document.createElement("span");
   ts.className = "time";
   ts.textContent = now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
   meta.appendChild(ts);
   div.appendChild(meta);
+  
   const body = document.createElement("div");
+  body.className = "msg-body";
   body.textContent = text;
   div.appendChild(body);
+  
   els.messages.appendChild(div);
   hideEmptyTip();
-  scrollDown();
+  smartScroll(true);
   return body;
 }
-function scrollDown() { els.messages.scrollTo({ top: els.messages.scrollHeight, behavior: "smooth" }); }
+
 function hideEmptyTip() {
   const t = $("emptyTip");
   if (t) t.style.display = "none";
 }
 
-/* 智能滚动：流式期间只在接近底部时跟随，回读上文不被拽走；否则显示回底药丸 */
+/* 智能平滑跟随滚动 */
 let nearBottom = true;
 let lastScrollAuto = 0;
 els.messages.addEventListener("scroll", () => {
   const el = els.messages;
-  nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
   const btn = $("scrollToBottom");
   if (btn) btn.style.display = nearBottom ? "none" : "block";
 });
-function smartScroll() {
+
+function smartScroll(force = false) {
   const el = els.messages;
   const now = Date.now();
-  if (!nearBottom || now - lastScrollAuto < 150) return;
+  if (!force && (!nearBottom || now - lastScrollAuto < 120)) return;
   lastScrollAuto = now;
   el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
 }
 
+/* 优雅渲染工具洞察 */
 function addTools(tools) {
   if (!tools || !tools.length) return;
-  const row = document.createElement("div");
-  row.className = "tools";
+  const wrap = document.createElement("div");
+  wrap.className = "tools-container";
+  
+  const group = document.createElement("div");
+  group.className = "tools-pill-group";
+  
   for (const t of tools) {
-    const s = document.createElement("span");
-    s.className = t.ok ? "ok" : "err";
-    s.textContent = (t.ok ? "⚙ " : "⚠ ⚙ ") + t.name + (t.ok ? " ✓" : " ✗");
-    s.style.cursor = "pointer";
-    s.title = "点击查看详情";
-    s.onclick = () => {
-      // 展开/收起该工具详情
-      const existing = s.nextElementSibling;
-      if (existing && existing.classList.contains("tools-detail")) { existing.remove(); return; }
-      const pre = document.createElement("pre");
-      pre.className = "tools-detail";
-      pre.textContent = `⚙ ${t.name}\n参数：${t.args || "(无)"}\n→ ${t.output || "(空)"}`;
-      s.insertAdjacentElement("afterend", pre);
+    const pill = document.createElement("span");
+    pill.className = "tool-badge " + (t.ok ? "ok" : "err");
+    pill.textContent = (t.ok ? "🔮 灵性洞察 · " : "⚠ 异动 · ") + t.name;
+    pill.title = "点击探查参数与结果";
+    
+    pill.onclick = () => {
+      const existing = wrap.querySelector(".tool-detail-box");
+      if (existing) { existing.remove(); return; }
+      const box = document.createElement("div");
+      box.className = "tool-detail-box";
+      box.textContent = `[秘术] ${t.name}\n参数: ${t.args || "(无)"}\n输出: ${t.output || "(空)"}`;
+      wrap.appendChild(box);
     };
-    row.appendChild(s);
+    group.appendChild(pill);
   }
-  els.messages.appendChild(row);
-  scrollDown();
+  wrap.appendChild(group);
+  els.messages.appendChild(wrap);
+  smartScroll();
 }
 
+/* ───── 渲染塔罗式命运抉择卡 ───── */
 function renderCard(card) {
   const box = document.createElement("div");
   box.className = "card-box";
-  const q = document.createElement("div"); q.className = "q"; q.textContent = "✦ 决策卡：" + card.question;
+  
+  const q = document.createElement("div");
+  q.className = "q-title";
+  q.innerHTML = `<span>✦</span> 命运分歧：${esc(card.question)}`;
   box.appendChild(q);
-  if (card.reason) { const r = document.createElement("div"); r.className = "r"; r.textContent = card.reason; box.appendChild(r); }
+  
+  if (card.reason) {
+    const r = document.createElement("div");
+    r.className = "q-reason";
+    r.textContent = card.reason;
+    box.appendChild(r);
+  }
+  
+  const grid = document.createElement("div");
+  grid.className = "options-grid";
   const btns = [];
+  
   card.options.forEach((opt, i) => {
     const b = document.createElement("button");
-    b.className = "opt";
-    b.textContent = `${i + 1}. ${opt}`;
+    b.className = "opt-btn";
+    b.innerHTML = `<span class="opt-key">${i + 1}</span><span>${esc(opt)}</span>`;
     b.onclick = () => { sendChoice(opt); box.remove(); };
-    box.appendChild(b);
+    grid.appendChild(b);
     btns.push(b);
   });
+  box.appendChild(grid);
+  
   if (card.allowFreeInput) {
     const input = document.createElement("input");
+    input.className = "opt-custom-input";
     input.type = "text";
-    input.placeholder = "或输入你自己的走向…（回车确认）";
-    input.onkeydown = (e) => { if (e.key === "Enter" && input.value.trim()) { sendChoice(input.value.trim()); box.remove(); } };
+    input.placeholder = "或者，书写你自己的决断与行动…（回车宣告）";
+    input.onkeydown = (e) => {
+      if (e.key === "Enter" && input.value.trim()) {
+        sendChoice(input.value.trim());
+        box.remove();
+      }
+    };
     box.appendChild(input);
   }
-  // 数字快捷键：1-9 直接选对应选项（BG3/CRPG 惯例）
+  
+  // 快捷键 1-9 快速拍板
   box.tabIndex = 0;
   box.addEventListener("keydown", (e) => {
     const n = parseInt(e.key, 10);
     if (n >= 1 && n <= btns.length) {
       e.preventDefault();
       btns[n - 1].click();
-    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-      e.preventDefault();
-      const idx = btns.indexOf(document.activeElement);
-      const next = e.key === "ArrowDown" ? (idx + 1) % btns.length : (idx - 1 + btns.length) % btns.length;
-      btns[next].focus();
     }
   });
+  
   els.messages.appendChild(box);
   cardEl = box;
   box.scrollIntoView({ behavior: "smooth", block: "nearest" });
   box.focus();
-  const hint = document.createElement("div");
-  hint.className = "warn";
-  hint.id = "cardHint";
-  hint.textContent = "✦ 剧情在等你拍板：按 1-9 或点击选项，或直接在输入框输入你的走向";
-  els.messages.appendChild(hint);
-  scrollDown();
+  smartScroll();
 }
+
 function sendChoice(text) {
   wsSend({ type: "choice", text });
   clearCard();
 }
 function clearCard() {
   if (cardEl) { cardEl.remove(); cardEl = null; }
-  const h = $("cardHint");
-  if (h) h.remove();
 }
 
-/* ===== BG3 式玩家掷骰 ===== */
-let rollEl = null; // 当前掷骰卡 DOM
-let rollResolve = null; // 收到结果的回调（骰子动画结束后触发）
+/* ───── 渲染 3D 命运 D20 掷骰卡 ───── */
+let rollEl = null;
 
 function renderRollCard(card) {
   const box = document.createElement("div");
   box.className = "roll-box";
   const modStr = card.mod >= 0 ? "+" + card.mod : String(card.mod);
-  const labelSafe = esc(String(card.label ?? "检定"));
-  box.innerHTML =
-    `<div class="rq">🎲 检定 · ${labelSafe}</div>` +
-    `<div class="rr">行动成败在此一掷</div>` +
-    `<div class="roll-math">D20 <b>${modStr}</b> vs <b>DC${card.dc}</b></div>` +
-    `<div class="dice"><div class="face">?</div></div>` +
-    `<div class="roll-result"></div>` +
-    `<button id="rollBtn">🎲 投掷 D20</button>` +
-    `<div class="roll-note">点击投掷，让骰子替你决定</div>`;
+  const labelSafe = esc(String(card.label ?? "灵感检定"));
+  
+  box.innerHTML = `
+    <div class="rq">🎲 命运检定 · ${labelSafe}</div>
+    <div class="rr">因果交织，成败系于命运轮转</div>
+    <div class="roll-math">D20 (修正 <b>${modStr}</b>) vs 难度 <b>DC ${card.dc}</b></div>
+    <div class="dice-stage">
+      <div class="dice-d20">
+        <div class="dice-face">?</div>
+      </div>
+    </div>
+    <div class="roll-result"></div>
+    <button id="rollBtn">🎲 投掷 D20 骰子</button>
+  `;
+  
   els.messages.appendChild(box);
   rollEl = box;
   box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  
   const btn = box.querySelector("#rollBtn");
   btn.onclick = () => {
     btn.disabled = true;
-    btn.textContent = "🎲 投掷中…";
-    const face = box.querySelector(".dice .face");
-    const dice = box.querySelector(".dice");
-    dice.classList.add("rolling");
-    face.textContent = "?";
-    // 骰子数字轮播（投掷感）+ 弹跳，收到结果时停轮播显真值
-    const spin = setInterval(() => { face.textContent = 1 + Math.floor(Math.random() * 20); }, 80);
+    btn.textContent = "🎲 命运轮转中…";
+    const face = box.querySelector(".dice-face");
+    const d20 = box.querySelector(".dice-d20");
+    d20.classList.add("rolling");
+    
+    // 快速摇号轮播感
+    const spin = setInterval(() => {
+      face.textContent = 1 + Math.floor(Math.random() * 20);
+    }, 60);
     box._rollSpin = spin;
+    
     wsSend({ type: "roll" });
+  };
+  smartScroll();
+}
+
+function onRollResult(result) {
+  if (!rollEl) return;
+  const face = rollEl.querySelector(".dice-face");
+  const d20 = rollEl.querySelector(".dice-d20");
+  const res = rollEl.querySelector(".roll-result");
+  const btn = rollEl.querySelector("#rollBtn");
+  
+  if (rollEl._rollSpin) { clearInterval(rollEl._rollSpin); rollEl._rollSpin = null; }
+  d20.classList.remove("rolling");
+  face.textContent = result.die;
+  face.className = "dice-face";
+  
+  if (result.die === 20) {
+    face.classList.add("nat20");
+    els.messages.classList.add("shake");
+    setTimeout(() => els.messages.classList.remove("shake"), 400);
+  } else if (result.die === 1) {
+    face.classList.add("nat1");
+    els.messages.classList.add("shake");
+    setTimeout(() => els.messages.classList.remove("shake"), 400);
+  } else if (result.success) {
+    face.classList.add("pass");
+  } else {
+    face.classList.add("fail");
+  }
+  
+  const modStr = result.mod >= 0 ? "+" + result.mod : String(result.mod);
+  const verdict = result.die === 20 ? "✦ 命运眷顾 · 大成功！" : result.die === 1 ? "⚠ 灵性失控 · 大失败！" : result.success ? "✓ 检定通过" : "✗ 检定受阻";
+  
+  res.innerHTML = `投出 <b>${result.die}</b> ${modStr} = <b>${result.total}</b> vs DC${result.dc} → ` +
+    `<span class="${result.success ? 'succ' : 'fail'}">${verdict}</span>`;
+  
+  btn.disabled = false;
+  btn.textContent = "✓ 既定命运，继续推进";
+  btn.onclick = () => {
+    if (rollEl === box) rollEl = null;
+    box.remove();
   };
 }
 
-// 服务端推送真随机结果：停轮播、显示点数、落地辉光、crit 震屏
-function onRollResult(result) {
-  if (!rollEl) return;
-  const face = rollEl.querySelector(".dice .face");
-  const dice = rollEl.querySelector(".dice");
-  const res = rollEl.querySelector(".roll-result");
-  const btn = rollEl.querySelector("#rollBtn");
-  // 停轮播 + 停滚动动画
-  if (rollEl._rollSpin) { clearInterval(rollEl._rollSpin); rollEl._rollSpin = null; }
-  dice.classList.remove("rolling");
-  face.textContent = result.die;
-  face.classList.remove("big", "good", "bad", "impact");
-  if (result.die === 20) face.classList.add("big", "good");
-  else if (result.die === 1) face.classList.add("big", "bad");
-  else if (result.success) face.classList.add("good");
-  else face.classList.add("bad");
-  // 落地回弹 + 辉光（CSS impact）
-  void face.offsetWidth; // 强制重排以重播动画
-  face.classList.add("impact");
-  // 大成功/大失败震屏
-  if (result.die === 20 || result.die === 1) {
-    els.messages.classList.add("shake");
-    setTimeout(() => els.messages.classList.remove("shake"), 300);
-  }
-  const modStr = result.mod >= 0 ? "+" + result.mod : String(result.mod);
-  res.innerHTML = `D20(${result.die})${modStr} = <b>${result.total}</b> vs DC${result.dc} → ` +
-    (result.success ? `<span class="succ">✓ 成功</span>` : `<span class="fail">✗ 失败</span>`);
-  btn.disabled = false;
-  btn.textContent = "✓ 结果已定，继续";
-  btn.onclick = () => { boxRemoved(rollEl); };
+/* ───── 渲染手账状态、主线与人物册 ───── */
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
 }
-function boxRemoved(box) {
-  if (rollEl === box) rollEl = null;
-  box.remove();
+
+function renderState(st) {
+  $("chipCard").textContent = st.cardName || "克莱恩·莫雷蒂";
+  $("chipModel").textContent = st.model;
+  $("stBudget").textContent = Math.round(st.budgetChars / 1000) + "k 字符";
+  $("stWindow").textContent = `${st.windowTurns} / ${st.totalTurns} 回合`;
+  $("summary").textContent = st.summary || "（暂无前情纪要）";
+  
+  // 灵性进度条渲染
+  const ratio = typeof st.budgetUsed === "number" ? Math.min(1, st.budgetUsed) : 0;
+  const pct = Math.round(ratio * 100);
+  const fill = $("spiritFill");
+  const ratioText = $("spiritRatio");
+  const ctxBar = $("ctxBar");
+  
+  if (fill) fill.style.width = pct + "%";
+  if (ratioText) ratioText.textContent = pct + "%";
+  if (ctxBar) ctxBar.style.width = pct + "%";
+  
+  if (ratio > 0.85) {
+    if (fill) fill.style.background = "var(--crimson-moon)";
+  } else if (ratio > 0.65) {
+    if (fill) fill.style.background = "var(--brass-gold)";
+  }
+  
+  renderMainline(st.mainline);
+  renderRoster(st.ledger?.characters || []);
+  renderLedger(st.ledger || {});
+}
+
+function renderMainline(m) {
+  const box = $("mainline");
+  const chip = $("chipArcText");
+  const badge = $("arcStepBadge");
+  if (!m || !m.title) {
+    box.innerHTML = '<span style="color:var(--text-dark);font-size:12.5px;">（自由探索篇）</span>';
+    if (chip) chip.textContent = "自由探索";
+    return;
+  }
+  
+  if (chip) chip.textContent = m.title;
+  if (badge) badge.textContent = m.title.split("·")[0] || "当前篇章";
+  
+  let html = `<div style="font-size:14px;font-weight:700;color:var(--brass-light);margin-bottom:8px;">${esc(m.title)}</div>`;
+  if (m.objectives && m.objectives.length) {
+    html += '<ul style="list-style:none;display:flex;flex-direction:column;gap:6px;font-size:12.5px;">';
+    m.objectives.forEach(o => {
+      html += `<li style="display:flex;align-items:flex-start;gap:6px;line-height:1.5;">` +
+        `<span style="color:var(--brass-gold);">✦</span><span>${esc(o)}</span></li>`;
+    });
+    html += '</ul>';
+  }
+  box.innerHTML = html;
+}
+
+function renderRoster(chars) {
+  const box = $("roster");
+  if (!chars.length) {
+    box.innerHTML = '<span style="color:var(--text-dark);font-size:12.5px;">（尚无结识的非凡者或市民）</span>';
+    return;
+  }
+  
+  let html = "";
+  for (const c of chars.slice(-12).reverse()) {
+    const { key, name, ...rest } = c;
+    const status = rest.status || rest["状态"] || "现世";
+    const desc = Object.entries(rest)
+      .filter(([k, v]) => k !== "status" && k !== "状态" && v !== undefined && v !== null && v !== "")
+      .map(([k, v]) => `${k}：${typeof v === "object" ? JSON.stringify(v) : v}`).join("；");
+      
+    html += `
+      <div class="character-card">
+        <div class="char-top">
+          <span class="char-name">${esc(key || name || "未名之影")}</span>
+          <span class="char-status">${esc(status)}</span>
+        </div>
+        ${desc ? `<div class="char-desc">${esc(desc)}</div>` : ''}
+      </div>
+    `;
+  }
+  box.innerHTML = html;
 }
 
 function renderLedger(ledger) {
   const box = $("ledger");
   box.innerHTML = "";
   let any = false;
+  
   for (const [sec, label] of Object.entries(LEDGER_LABEL)) {
+    if (sec === "characters") continue; // 已在人物录展示
     const items = ledger[sec] || [];
     if (!items.length) continue;
     any = true;
-    const h = document.createElement("h3");
-    h.style.cssText = "font-size:13px;color:var(--dim);margin:8px 0 4px;";
-    h.textContent = label + "（" + items.length + "）";
+    
+    const h = document.createElement("div");
+    h.className = "ledger-section-title";
+    h.innerHTML = `<span>${label}</span><span>(${items.length})</span>`;
     box.appendChild(h);
+    
     const ul = document.createElement("ul");
+    ul.className = "ledger-item-list";
     for (const it of items.slice(-8).reverse()) {
       const li = document.createElement("li");
+      li.className = "ledger-item";
       const { key, ...rest } = it;
-      const desc = Object.entries(rest).filter(([, v]) => v !== null && v !== undefined && v !== "").map(([k, v]) => `${k}：${typeof v === "object" ? JSON.stringify(v) : v}`).join("，");
-      li.innerHTML = `<span class="label">${esc(key || "•")}</span>${esc(desc || "(空)")}`;
+      const desc = Object.entries(rest)
+        .filter(([, v]) => v !== null && v !== undefined && v !== "")
+        .map(([k, v]) => `${k}：${typeof v === "object" ? JSON.stringify(v) : v}`).join("，");
+      li.innerHTML = `<span class="ledger-key">${esc(key || "•")}</span><span>${esc(desc || "(无更多线索)")}</span>`;
       ul.appendChild(li);
     }
     box.appendChild(ul);
   }
-  if (!any) box.innerHTML = '<span style="color:var(--dim);font-size:13px">（账本为空）</span>';
-}
-function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
-
-function renderState(st) {
-  $("chipCard").textContent = "角色：" + (st.cardName || "—");
-  $("chipModel").textContent = "模型：" + st.model;
-  $("chipState").textContent = `窗口 ${st.windowTurns}/${st.totalTurns}`;
-  $("stBudget").textContent = Math.round(st.budgetChars / 1000) + "k 字符";
-  $("stWindow").textContent = `${st.windowTurns} / ${st.totalTurns}`;
-  $("summary").textContent = st.summary || "（暂无）";
-  // 上下文预算进度条：用服务端算的预算占用（可见字符/预算），三级颜色 + 高占用提示一次
-  const ratio = typeof st.budgetUsed === "number" ? Math.min(1, st.budgetUsed) : 0;
-  const bar = $("ctxBar");
-  if (bar) {
-    bar.style.width = Math.round(ratio * 100) + "%";
-    bar.style.background = ratio > 0.9 ? "var(--err)" : ratio > 0.7 ? "#fbbf24" : "var(--accent)";
-  }
-  if (ratio > 0.9 && !localStorage.getItem("ctxWarned")) {
-    localStorage.setItem("ctxWarned", "1");
-    const w = document.createElement("div"); w.className = "warn";
-    w.textContent = "⚠ 上下文使用率高（" + Math.round(ratio * 100) + "%），建议 /snap 存档后 /back 精简窗口";
-    els.messages.appendChild(w); scrollDown();
-  }
-  renderLedger(st.ledger);
-  renderMainline(st.mainline);
-  renderRoster(st.ledger.characters || []);
+  if (!any) box.innerHTML = '<span style="color:var(--text-dark);font-size:12.5px;">（隐秘账本尚无记录）</span>';
 }
 
-/** 人物册：把账本 characters 渲染成群像卡（状态高亮，呼应群像叙事） */
-function renderRoster(characters) {
-  const box = $("roster");
-  if (!characters.length) { box.innerHTML = '<span style="color:var(--dim);font-size:13px">（还没有登记的角色）</span>'; return; }
-  let html = "";
-  for (const c of characters.slice(-12).reverse()) {
-    const { key, name, ...rest } = c;
-    const status = rest.status || rest["状态"] || "";
-    const desc = Object.entries(rest).filter(([k, v]) => k !== "status" && k !== "状态" && v !== undefined && v !== null && v !== "")
-      .map(([k, v]) => `${k}：${typeof v === "object" ? JSON.stringify(v) : v}`).join("，").slice(0, 60);
-    const badge = status ? `<span style="color:var(--ok);font-size:11px;margin-left:6px;">${esc(status)}</span>` : "";
-    html += `<div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 9px;margin-bottom:6px;">`
-      + `<div style="font-size:13px;font-weight:700;">${esc(key || name || "?")}${badge}</div>`
-      + (desc ? `<div style="font-size:11px;color:var(--dim);margin-top:2px;">${esc(desc)}</div>` : "")
-      + `</div>`;
-  }
-  box.innerHTML = html;
-}
-
-function renderMainline(m) {
-  const box = $("mainline");
-  if (!m || !m.title) { box.innerHTML = '<span style="color:var(--dim);font-size:13px">（无主线）</span>'; return; }
-  let html = `<div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:6px;">${esc(m.title)}</div>`;
-  html += '<ul style="font-size:12px;line-height:1.7;">' + (m.objectives || []).map(o => `<li>· ${esc(o)}</li>`).join("") + '</ul>';
-  box.innerHTML = html;
-}
-
-/** 初始渲染历史消息（刷新/回档后恢复对话） */
 function renderHistory(turns) {
   for (const t of turns || []) {
     if (t.user) addMsg("user", t.user);
@@ -617,82 +1656,65 @@ function renderHistory(turns) {
   }
 }
 
+/* ───── 命运世界线存档 ───── */
 async function loadSnapshots() {
-  const list = await (await fetch("/api/snapshots")).json();
-  const ul = $("snapList");
-  ul.innerHTML = "";
-  if (!list.length) { ul.innerHTML = '<li style="color:var(--dim)">（暂无存档）</li>'; return; }
-  for (const s of list) {
-    const li = document.createElement("li");
-    li.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:6px;";
-    const info = document.createElement("span");
-    info.textContent = (s.label ? s.label + " · " : "") + new Date(s.at).toLocaleString();
-    info.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-    const btn = document.createElement("button");
-    btn.textContent = "回档";
-    btn.style.cssText = "background:var(--accent);border:none;color:#0b0d12;border-radius:6px;padding:2px 10px;cursor:pointer;font-size:12px;";
-    btn.onclick = async () => {
-      if (!confirm("回档到「" + (s.label || new Date(s.at).toLocaleString()) + "」？当前进度会先自动存档。")) return;
-      const res = await fetch("/api/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: s.id }) });
-      const data = await res.json();
-      if (!res.ok) { alert(data.error || "回档失败"); return; }
-      location.reload();
-    };
-    li.appendChild(info); li.appendChild(btn);
-    ul.appendChild(li);
-  }
-}
-async function saveSnapshot() {
-  const label = $("snapLabel").value.trim();
-  const res = await fetch("/api/snapshot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }) });
-  const data = await res.json();
-  if (!res.ok) { alert(data.error || "存档失败"); return; }
-  $("snapLabel").value = "";
-  loadSnapshots();
-}
-
-/* ─────────── WebSocket ─────────── */
-let ws = null;
-function wsSend(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
-
-/* ===== HTTP 对话兜底（Vercel 无持久 WS 时自动切换） ===== */
-let httpMode = false;
-let wsTurnTimer = null; // WS 回合超时检测
-function setHttpMode(on) {
-  httpMode = on;
-  $("chipState").textContent = on ? "HTTP 模式" : "已连接";
-  if (on) {
-    const w = document.createElement("div");
-    w.className = "warn";
-    w.textContent = "⚠ 已切换 HTTP 模式：可正常对话，但决策卡/掷骰自动默认选择，打字机效果关闭";
-    els.messages.appendChild(w);
-    scrollDown();
-  }
-}
-/** HTTP 版发消息：返回 {ok, content} */
-async function httpSend(obj) {
   try {
-    const r = await fetch("/api/chat?sid=" + encodeURIComponent(getSid()), {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(obj),
-    });
-    const data = await r.json();
-    return data;
-  } catch { return { ok: false, error: "网络错误" }; }
-}
-/** HTTP 版刷新 state（轮询） */
-async function httpPollState() {
-  try {
-    const r = await fetch("/api/state?sid=" + encodeURIComponent(getSid()));
-    const st = await r.json();
-    renderState(st);
-    if (st.turns && st.turns.length) renderHistory(st.turns);
+    const list = await (await fetch("/api/snapshots?sid=" + encodeURIComponent(getSid()))).json();
+    const ul = $("snapList");
+    ul.innerHTML = "";
+    if (!list.length) {
+      ul.innerHTML = '<li style="color:var(--text-dark);font-size:12.5px;">（尚未留存命运刻印）</li>';
+      return;
+    }
+    for (const s of list) {
+      const li = document.createElement("li");
+      li.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:rgba(18,22,34,0.7);border:1px solid var(--border-brass);border-radius:8px;font-size:12px;";
+      
+      const info = document.createElement("span");
+      info.textContent = (s.label ? s.label + " · " : "") + new Date(s.at).toLocaleTimeString("zh-CN", {hour:'2-digit',minute:'2-digit'});
+      info.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;color:var(--text-main);";
+      
+      const btn = document.createElement("button");
+      btn.className = "action-btn primary";
+      btn.textContent = "溯流";
+      btn.style.cssText = "padding:3px 10px;font-size:11.5px;";
+      btn.onclick = async () => {
+        if (!confirm("回溯到此时间节点？当前未保存的因果将先自动归档。")) return;
+        const res = await fetch("/api/restore?sid=" + encodeURIComponent(getSid()), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: s.id })
+        });
+        if (!res.ok) { alert("回溯失败"); return; }
+        location.reload();
+      };
+      li.appendChild(info);
+      li.appendChild(btn);
+      ul.appendChild(li);
+    }
   } catch {}
 }
 
+async function saveSnapshot() {
+  const label = $("snapLabel").value.trim();
+  const res = await fetch("/api/snapshot?sid=" + encodeURIComponent(getSid()), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label })
+  });
+  if (!res.ok) { alert("存档失败"); return; }
+  $("snapLabel").value = "";
+  loadSnapshots();
+}
+$("snapBtn").onclick = saveSnapshot;
+
+/* ───── 通信层（WebSocket 与 HTTP 兜底） ───── */
+let ws = null;
+let httpMode = false;
+let wsTurnTimer = null;
 let interrupted = false;
 let reconnectFailures = 0;
-/** 会话 ID：localStorage 持久化（每个浏览器一个稳定 ID），服务端按它隔离游戏状态 */
+
 function getSid() {
   let sid = localStorage.getItem("wd_sid");
   if (!sid) {
@@ -701,24 +1723,122 @@ function getSid() {
   }
   return sid;
 }
+
+function wsSend(obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+/* ───── 动态行动灵感推荐解析 ───── */
+function extractRecommendedActions(text) {
+  if (!text) return [];
+  const m = text.match(/【(?:你可以|行动建议|可选行动|建议行动)[^】]*】([\s\S]*?)$/i);
+  const targetText = m ? m[1] : text.slice(-500);
+  const lines = targetText.split("\n");
+  const actions = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^(?:(?:\d+[\.、\)]|\([0-9]+\)|[①②③④⑤]|[-·•*]))\s*(.+)$/);
+    if (match && match[1]) {
+      let act = match[1].replace(/^[：:\s]+/, "").trim();
+      if (act.length >= 2 && act.length <= 50) {
+        actions.push(act);
+      }
+    }
+  }
+  return actions.slice(0, 4);
+}
+
+function updateInspirationPills(actions) {
+  const bar = $("quickCmd");
+  if (!bar) return;
+  
+  const fixedCmds = [
+    { cmd: "/phase", label: "🏛️ 主线目标" },
+    { cmd: "/lore 占卜家", label: "🔍 探寻设定" },
+    { cmd: "/snap", label: "💾 命运存档" },
+    { cmd: "/help", label: "❓ 帮助指令" },
+  ];
+  
+  const fallbackActions = [
+    "检查手中的罗塞尔日记残页",
+    "闭上双眼，尝试感知刚才掠过的灰雾",
+    "走出房门，去看看房东太太送来的信"
+  ];
+  
+  const acts = (actions && actions.length) ? actions : fallbackActions;
+  bar.innerHTML = "";
+  
+  acts.forEach((act) => {
+    const btn = document.createElement("button");
+    btn.className = "inspiration-pill dynamic-pill";
+    const shortLabel = act.length > 15 ? act.slice(0, 14) + "…" : act;
+    btn.innerHTML = `<span style="color:var(--brass-gold);">✦</span> <span>${esc(shortLabel)}</span>`;
+    btn.title = act;
+    btn.dataset.cmd = act;
+    btn.onclick = () => {
+      if (busy) return;
+      els.input.value = act;
+      sendChat();
+    };
+    bar.appendChild(btn);
+  });
+  
+  const sep = document.createElement("span");
+  sep.style.cssText = "display:inline-block;width:1px;height:18px;background:var(--border-brass);margin:0 4px;align-self:center;";
+  bar.appendChild(sep);
+  
+  fixedCmds.forEach(item => {
+    const btn = document.createElement("button");
+    btn.className = "inspiration-pill";
+    btn.textContent = item.label;
+    btn.dataset.cmd = item.cmd;
+    btn.onclick = () => {
+      if (item.cmd.startsWith("/lore ")) {
+        els.input.value = "/lore ";
+        els.input.focus();
+        return;
+      }
+      if (busy) return;
+      wsSend({ type: "command", text: item.cmd });
+    };
+    bar.appendChild(btn);
+  });
+}
+
 function connect() {
   const proto = location.protocol === "https:" ? "wss://" : "ws://";
   ws = new WebSocket(proto + location.host + "/ws?sid=" + encodeURIComponent(getSid()));
+  
   ws.onopen = () => {
-    $("chipState").textContent = "已连接";
+    $("chipState").textContent = "通灵就绪";
+    $("chipState").style.color = "var(--emerald-ok)";
     if (interrupted) {
       interrupted = false;
-      const w = document.createElement("div");
-      w.className = "warn";
-      w.textContent = "⚠ 连接已重连：若上一条回复被中断，请重发或输入『继续』";
-      els.messages.appendChild(w);
-      scrollDown();
+      addMsg("assistant", "（灰雾微波涌动，灵性通灵重新连通……）");
     }
   };
+  
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.type === "init") { renderState(msg.state); renderHistory(msg.state.turns || []); loadSnapshots(); }
+    
+    if (msg.type === "init") {
+      renderState(msg.state);
+      renderHistory(msg.state.turns || []);
+      loadSnapshots();
+      if (msg.state.turns && msg.state.turns.length) {
+        const lastTurn = msg.state.turns[msg.state.turns.length - 1];
+        const lastAsst = (lastTurn.messages || []).slice().reverse().find(m => m.role === "assistant" && m.content);
+        if (lastAsst && lastAsst.content) {
+          updateInspirationPills(extractRecommendedActions(lastAsst.content));
+        } else {
+          updateInspirationPills([]);
+        }
+      } else {
+        updateInspirationPills([]);
+      }
+    }
+    
     if (msg.type === "delta") {
       if (!streamingBubble) {
         clearTyping();
@@ -727,135 +1847,115 @@ function connect() {
       streamingBubble.textContent += msg.text;
       smartScroll();
     }
+    
     if (msg.type === "turn_done") {
+      const lastText = streamingBubble ? streamingBubble.textContent : "";
+      if (lastText) {
+        const rec = extractRecommendedActions(lastText);
+        updateInspirationPills(rec);
+      }
       resetSendBtn();
       addTools(msg.stats.tools);
       if (msg.stats.decisions && msg.stats.decisions.length) {
-        $("stTools").textContent = "决策卡 ×" + msg.stats.decisions.length;
+        $("stTools").textContent = "命运抉择 ×" + msg.stats.decisions.length;
       } else {
-        $("stTools").textContent = msg.stats.tools.length ? `工具 ${msg.stats.tools.length} 次` : "无";
+        $("stTools").textContent = msg.stats.tools.length ? `灵性探查 ${msg.stats.tools.length} 次` : "直接推进";
       }
-      $("stTokens").textContent = msg.stats.estTokens ? `≈ ${msg.stats.estTokens} token` : "—";
+      $("stTokens").textContent = msg.stats.estTokens ? `≈ ${msg.stats.estTokens} 灵感` : "—";
     }
-    if (msg.type === "card") renderCard(msg.card);
+    
+    if (msg.type === "card") {
+      renderCard(msg.card);
+      updateInspirationPills(msg.card.options);
+    }
     if (msg.type === "roll_card") renderRollCard(msg.card);
     if (msg.type === "roll_result") onRollResult(msg.result);
     if (msg.type === "state") renderState(msg.state);
-    if (msg.type === "notice") {
-      const n = document.createElement("div");
-      n.className = "warn";
-      n.style.cssText = "white-space:pre-wrap;align-self:center;max-width:85%;";
-      n.textContent = "⚙ " + msg.text;
-      els.messages.appendChild(n);
-      scrollDown();
+    
+    if (msg.type === "warn" || msg.type === "notice") {
+      const banner = document.createElement("div");
+      banner.className = "warn-banner";
+      banner.textContent = (msg.type === "warn" ? "✦ " : "⚙ ") + (msg.message || msg.text);
+      els.messages.appendChild(banner);
+      smartScroll();
     }
-    if (msg.type === "reload") { location.reload(); }
-    if (msg.type === "warn") { const w = document.createElement("div"); w.className = "warn"; w.textContent = msg.message; els.messages.appendChild(w); scrollDown(); }
+    if (msg.type === "reload") location.reload();
     if (msg.type === "error") {
       resetSendBtn();
-      const w = document.createElement("div"); w.className = "warn"; w.textContent = "⚠ " + msg.message; els.messages.appendChild(w); scrollDown();
+      const banner = document.createElement("div");
+      banner.className = "warn-banner";
+      banner.style.borderColor = "var(--crimson-moon)";
+      banner.textContent = "⚠ " + msg.message;
+      els.messages.appendChild(banner);
+      smartScroll();
     }
   };
+  
   ws.onerror = () => {
     reconnectFailures++;
     if (reconnectFailures === 3 && !httpMode) {
-      setHttpMode(true);
-      // HTTP 模式开启后停止 WS 重连，改用 HTTP 轮询
+      httpMode = true;
+      $("chipState").textContent = "凡世信笺 (HTTP)";
+      $("chipState").style.color = "var(--brass-gold)";
       try { ws.close(); } catch {}
-      httpPollState();
     }
   };
+  
   ws.onclose = () => {
     if (busy) interrupted = true;
-    busy = false; els.send.disabled = false; els.input.disabled = false;
-    // 已切 HTTP 模式：不再重连 WS
-    if (httpMode) return;
-    // 连续失败 5 次后停止自动重连（Vercel 等无 WS 环境避免无限循环）
-    if (reconnectFailures >= 5) return;
+    busy = false;
+    if (httpMode || reconnectFailures >= 6) return;
     setTimeout(connect, 1500);
   };
 }
 
+/* ───── 发送决断与对话 ───── */
 async function sendChat() {
-  // busy 时按钮变“停止”：中断当前生成（关闭 WS 触发重连重置）
   if (busy) {
     stopGenerating();
     return;
   }
+  
   const text = els.input.value.trim();
   if (!text) return;
-  // 决策卡挂起时：普通输入当作自由选择（防止"没人点卡片 → 对话卡死"）
+  
+  // 抉择卡挂起时直接把输入当作选择
   if (cardEl) {
     wsSend({ type: "choice", text });
     clearCard();
     els.input.value = "";
     return;
   }
-  if (busy) return;
-  // 斜杠命令：不占用剧情回合，只发命令
+  
   if (text.startsWith("/")) {
     els.input.value = "";
-    if (httpMode) {
-      void (async () => {
-        const data = await httpSend({ type: "command", text });
-        if (data.content) {
-          const w = document.createElement("div"); w.className = "warn"; w.style.cssText = "white-space:pre-wrap;"; w.textContent = data.content; els.messages.appendChild(w); scrollDown();
-        }
-        httpPollState();
-      })();
-    } else {
-      wsSend({ type: "command", text });
-    }
+    wsSend({ type: "command", text });
     return;
   }
-  busy = true; els.send.disabled = true;
+  
+  busy = true;
   els.send.classList.add("busy");
-  els.send.textContent = "停止";
-  els.send.style.color = "var(--err)";
-  els.send.style.border = "1px solid var(--err)";
-  els.send.disabled = false;
+  els.send.textContent = "中断思考";
   els.input.value = "";
+  
   addMsg("user", text);
-  // 打字指示器：AI 思考/生成期间显示三点跳动，首个 delta 到达时替换
+  
+  // 灵视三色打字机
   const typing = document.createElement("div");
   typing.className = "msg assistant typing";
-  typing.innerHTML = '<div class="dots"><i></i><i></i><i></i></div>';
+  typing.innerHTML = '<div class="mystic-pulse"><span></span><span></span><span></span></div>';
   els.messages.appendChild(typing);
   hideEmptyTip();
-  scrollDown();
-  if (httpMode) {
-    // HTTP 模式：等待完整返回后一次性渲染
-    void (async () => {
-      const data = await httpSend({ type: "chat", text });
-      clearTyping();
-      if (data.ok) {
-        const body = addMsg("assistant", data.content || "（本轮无正文）");
-        body.style.animation = "none";
-      } else {
-        const w = document.createElement("div"); w.className = "warn"; w.textContent = "⚠ " + (data.error || "请求失败"); els.messages.appendChild(w);
-      }
-      resetSendBtn();
-      httpPollState();
-    })();
-    return;
-  }
+  smartScroll(true);
+  
   wsSend({ type: "chat", text });
-  // WS 消息超时检测：90s 无响应（Vercel WS 数据不通）则切 HTTP 重发
+  
   if (wsTurnTimer) clearTimeout(wsTurnTimer);
   wsTurnTimer = setTimeout(() => {
-    if (busy && !httpMode) {
-      console.warn("[ws] 回合 90s 无响应，切 HTTP 模式");
-      setHttpMode(true);
-      try { ws.close(); } catch {}
-      resetSendBtn();
-      // HTTP 重发同一句
-      els.input.value = text;
-      sendChat();
-    }
+    if (busy) resetSendBtn();
   }, 90000);
 }
 
-/* 停止生成：关 WS 触发重连重置（服务端无 interrupt 时的降级） */
 function stopGenerating() {
   try { ws.close(); } catch {}
   resetSendBtn();
@@ -863,55 +1963,67 @@ function stopGenerating() {
 }
 
 els.send.onclick = sendChat;
-els.input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+els.input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendChat();
+  }
+});
 
-// 快捷命令栏：点击即发命令
-for (const btn of document.querySelectorAll("#quickCmd button")) {
+// 行动灵感药丸
+document.querySelectorAll("#quickCmd button").forEach(btn => {
   btn.onclick = () => {
     const cmd = btn.dataset.cmd || "";
-    if (cmd === "/lore ") {
-      // /lore 需要参数：把命令填入输入框，让玩家补关键词
-      els.input.value = "/lore ";
-      els.input.focus();
-      return;
+    if (cmd.startsWith("/")) {
+      if (cmd === "/lore ") {
+        els.input.value = "/lore ";
+        els.input.focus();
+        return;
+      }
+      wsSend({ type: "command", text: cmd });
+    } else {
+      els.input.value = cmd;
+      sendChat();
     }
-    if (busy) return;
-    if (httpMode) { void (async () => { const d = await httpSend({ type: "command", text: cmd }); if (d.content) { const w = document.createElement("div"); w.className = "warn"; w.style.cssText = "white-space:pre-wrap;"; w.textContent = d.content; els.messages.appendChild(w); scrollDown(); } httpPollState(); })(); }
-    else wsSend({ type: "command", text: cmd });
   };
-}
+});
 
-els.uploadBtn.onclick = () => els.cardFile.click();
-$("snapBtn").onclick = saveSnapshot;
-
-// 导出菜单：点击下载 md/doc
+// 导出与新轮回
 const exportBtn = $("exportBtn");
 const exportMenu = $("exportMenu");
-exportBtn.onclick = (e) => { e.stopPropagation(); exportMenu.style.display = exportMenu.style.display === "none" ? "block" : "none"; };
+exportBtn.onclick = (e) => {
+  e.stopPropagation();
+  exportMenu.style.display = exportMenu.style.display === "none" ? "block" : "none";
+};
 document.addEventListener("click", () => { exportMenu.style.display = "none"; });
-for (const b of exportMenu.querySelectorAll("button")) {
+
+exportMenu.querySelectorAll("button").forEach(b => {
   b.onclick = async () => {
     const fmt = b.dataset.fmt || "md";
     exportMenu.style.display = "none";
     try {
-      const res = await fetch(`/api/export?fmt=${fmt}`);
+      const res = await fetch(`/api/export?sid=${encodeURIComponent(getSid())}&fmt=${fmt}`);
       if (!res.ok) { alert("导出失败"); return; }
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = fmt === "md" ? "rp-dialog.md" : "rp-dialog.doc";
+      a.download = fmt === "md" ? "诡秘之主·廷根纪要.md" : "诡秘之主·廷根手账.doc";
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(a.href);
     } catch { alert("导出失败"); }
   };
-}
+});
+
 $("newBtn").onclick = () => {
-  if (!confirm("新建对话？当前剧情、账本与主线进度将被清空（角色卡保留）。建议先存档。")) return;
-  if (httpMode) { void (async () => { await httpSend({ type: "command", text: "/new" }); location.reload(); })(); }
-  else wsSend({ type: "command", text: "/new" });
+  if (!confirm("确定开启新的轮回？当前剧情纪要与主线推进将归于虚无（角色卡保持）。建议先留存命运存档。")) return;
+  updateInspirationPills([]);
+  wsSend({ type: "command", text: "/new" });
 };
+
+// 角色卡上传
+els.uploadBtn.onclick = () => els.cardFile.click();
 els.cardFile.onchange = async () => {
   const f = els.cardFile.files[0];
   if (!f) return;
@@ -923,15 +2035,22 @@ els.cardFile.onchange = async () => {
   } else {
     body = await f.text();
   }
-  const res = await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+  const res = await fetch("/api/card?sid=" + encodeURIComponent(getSid()), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body
+  });
   const data = await res.json();
-  if (!res.ok) { alert(data.error || "导入失败"); return; }
+  if (!res.ok) { alert(data.error || "导入角色卡失败"); return; }
   els.messages.innerHTML = "";
-  if (data.firstMes) addMsg("assistant", data.firstMes);
-  const st = await (await fetch("/api/state")).json();
+  if (data.firstMes) {
+    addMsg("assistant", data.firstMes);
+    updateInspirationPills(extractRecommendedActions(data.firstMes));
+  }
+  const st = await (await fetch("/api/state?sid=" + encodeURIComponent(getSid()))).json();
   renderState(st);
-  $("chipCard").textContent = "角色：" + data.name;
 };
+
 connect();
 </script>
 </body>
