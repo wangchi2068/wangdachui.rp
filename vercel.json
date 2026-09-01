@@ -4,7 +4,7 @@
   "framework": "node",
   "functions": {
     "src/server.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     }
   }
 }
