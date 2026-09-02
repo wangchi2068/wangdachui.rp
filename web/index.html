@@ -1647,8 +1647,12 @@ function renderLedger(ledger) {
   if (!any) box.innerHTML = '<span style="color:var(--text-dark);font-size:12.5px;">（隐秘账本尚无记录）</span>';
 }
 
+let historyRendered = false;
 function renderHistory(turns) {
-  for (const t of turns || []) {
+  // 幂等：WS init 与 HTTP 轮询都可能触发，历史只完整渲染一次，避免重复
+  if (historyRendered || !turns || !turns.length) return;
+  historyRendered = true;
+  for (const t of turns) {
     if (t.user) addMsg("user", t.user);
     for (const m of t.messages || []) {
       if (m.role === "assistant" && m.content) addMsg("assistant", m.content);
@@ -1722,6 +1726,44 @@ function getSid() {
     localStorage.setItem("wd_sid", sid);
   }
   return sid;
+}
+
+/* ───── HTTP 对话兜底（Vercel 等无持久 WS 环境自动切换） ───── */
+function setHttpMode(on) {
+  httpMode = on;
+  $("chipState").textContent = on ? "凡世信笺 (HTTP)" : "通灵就绪";
+  $("chipState").style.color = on ? "var(--brass-gold)" : "var(--emerald-ok)";
+  if (on) {
+    const banner = document.createElement("div");
+    banner.className = "warn-banner";
+    banner.textContent = "⚠ 已切换 HTTP 模式：可正常对话与载入存档，但决策卡/掷骰将自动默认选择";
+    els.messages.appendChild(banner);
+    smartScroll(true);
+  }
+}
+
+/** HTTP 版发消息：返回 {ok, content, state} */
+async function httpSend(obj) {
+  try {
+    const r = await fetch("/api/chat?sid=" + encodeURIComponent(getSid()), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(obj),
+    });
+    return await r.json();
+  } catch {
+    return { ok: false, error: "网络错误" };
+  }
+}
+
+/** HTTP 版刷新状态与历史（载入存档的关键路径） */
+async function httpPollState() {
+  try {
+    const r = await fetch("/api/state?sid=" + encodeURIComponent(getSid()));
+    const st = await r.json();
+    renderState(st);
+    if (st.turns && st.turns.length) renderHistory(st.turns);
+  } catch {}
 }
 
 function wsSend(obj) {
@@ -1894,13 +1936,13 @@ function connect() {
   ws.onerror = () => {
     reconnectFailures++;
     if (reconnectFailures === 3 && !httpMode) {
-      httpMode = true;
-      $("chipState").textContent = "凡世信笺 (HTTP)";
-      $("chipState").style.color = "var(--brass-gold)";
+      setHttpMode(true);
+      // HTTP 模式开启后停止 WS 重连，改用 HTTP 拉取状态与历史
       try { ws.close(); } catch {}
+      httpPollState();
     }
   };
-  
+
   ws.onclose = () => {
     if (busy) interrupted = true;
     busy = false;
@@ -1929,17 +1971,32 @@ async function sendChat() {
   
   if (text.startsWith("/")) {
     els.input.value = "";
-    wsSend({ type: "command", text });
+    if (httpMode) {
+      void (async () => {
+        const data = await httpSend({ type: "command", text });
+        if (data.content) {
+          const w = document.createElement("div");
+          w.className = "warn-banner";
+          w.style.whiteSpace = "pre-wrap";
+          w.textContent = data.content;
+          els.messages.appendChild(w);
+          smartScroll(true);
+        }
+        httpPollState();
+      })();
+    } else {
+      wsSend({ type: "command", text });
+    }
     return;
   }
-  
+
   busy = true;
   els.send.classList.add("busy");
   els.send.textContent = "中断思考";
   els.input.value = "";
-  
+
   addMsg("user", text);
-  
+
   // 灵视三色打字机
   const typing = document.createElement("div");
   typing.className = "msg assistant typing";
@@ -1947,12 +2004,41 @@ async function sendChat() {
   els.messages.appendChild(typing);
   hideEmptyTip();
   smartScroll(true);
-  
+
+  if (httpMode) {
+    // HTTP 模式：等待完整返回后一次性渲染（无打字机效果）
+    void (async () => {
+      const data = await httpSend({ type: "chat", text });
+      clearTyping();
+      if (data.ok) {
+        const body = addMsg("assistant", data.content || "（本轮无正文）");
+        body.style.animation = "none";
+        updateInspirationPills(extractRecommendedActions(data.content || ""));
+      } else {
+        const w = document.createElement("div");
+        w.className = "warn-banner";
+        w.textContent = "⚠ " + (data.error || "请求失败");
+        els.messages.appendChild(w);
+      }
+      resetSendBtn();
+      smartScroll(true);
+      httpPollState();
+    })();
+    return;
+  }
+
   wsSend({ type: "chat", text });
-  
+
+  // WS 回合超时检测：90s 无正文响应（Vercel WS 数据不通）则切 HTTP 并重发同一句
   if (wsTurnTimer) clearTimeout(wsTurnTimer);
   wsTurnTimer = setTimeout(() => {
-    if (busy) resetSendBtn();
+    if (busy && !httpMode) {
+      setHttpMode(true);
+      try { ws.close(); } catch {}
+      resetSendBtn();
+      els.input.value = text;
+      sendChat();
+    }
   }, 90000);
 }
 
@@ -1980,7 +2066,22 @@ document.querySelectorAll("#quickCmd button").forEach(btn => {
         els.input.focus();
         return;
       }
-      wsSend({ type: "command", text: cmd });
+      if (httpMode) {
+        void (async () => {
+          const d = await httpSend({ type: "command", text: cmd });
+          if (d.content) {
+            const w = document.createElement("div");
+            w.className = "warn-banner";
+            w.style.whiteSpace = "pre-wrap";
+            w.textContent = d.content;
+            els.messages.appendChild(w);
+            smartScroll(true);
+          }
+          httpPollState();
+        })();
+      } else {
+        wsSend({ type: "command", text: cmd });
+      }
     } else {
       els.input.value = cmd;
       sendChat();
@@ -2019,7 +2120,14 @@ exportMenu.querySelectorAll("button").forEach(b => {
 $("newBtn").onclick = () => {
   if (!confirm("确定开启新的轮回？当前剧情纪要与主线推进将归于虚无（角色卡保持）。建议先留存命运存档。")) return;
   updateInspirationPills([]);
-  wsSend({ type: "command", text: "/new" });
+  if (httpMode) {
+    void (async () => {
+      await httpSend({ type: "command", text: "/new" });
+      location.reload();
+    })();
+  } else {
+    wsSend({ type: "command", text: "/new" });
+  }
 };
 
 // 角色卡上传
@@ -2043,6 +2151,7 @@ els.cardFile.onchange = async () => {
   const data = await res.json();
   if (!res.ok) { alert(data.error || "导入角色卡失败"); return; }
   els.messages.innerHTML = "";
+  historyRendered = false; // 允许重新渲染历史
   if (data.firstMes) {
     addMsg("assistant", data.firstMes);
     updateInspirationPills(extractRecommendedActions(data.firstMes));
@@ -2052,6 +2161,8 @@ els.cardFile.onchange = async () => {
 };
 
 connect();
+// 保底：不管 WS 通不通，先用 HTTP 拉一次状态与历史（WS 永久不可用时存档/历史也能载入）
+void httpPollState();
 </script>
 </body>
 </html>
